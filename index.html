@@ -21,7 +21,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil:wght@600;800&family=Oswald:wght@400;500;600;700&family=Barlow:wght@400;500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
   :root{
-    --void:#05060a; --void-2:#0b0d14; --panel:#12151f;
+    --void:#05060a; --void-2:#0b0d14; --void-blue:#060815; --panel:#12151f;
     --steel:#232733; --steel-lt:#4a5568;
     --amber:#ffb020; --amber-dim:#b9791a; --rust:#8a4a2a;
     --text:#d8dbe2; --text-dim:#8890a0;
@@ -37,20 +37,15 @@
   a{ color:var(--amber); }
   ::selection{ background:var(--amber); color:#1a1305; }
 
-  /* ---- ambient: starfield + scanline/static overlay ---- */
-  .stars{ position:fixed; inset:0; z-index:0; pointer-events:none;
+  /* ---- ambient: HUD/tablet background (matches the Hard Times tome's 'digital'
+     page treatment on 919gaming's bookshelf) + scanline/static overlay ---- */
+  .hud-bg{ position:fixed; inset:0; z-index:0; pointer-events:none;
     background:
-      radial-gradient(1px 1px at 8% 22%, rgba(216,219,226,0.9), transparent),
-      radial-gradient(1px 1px at 22% 68%, rgba(216,219,226,0.7), transparent),
-      radial-gradient(1.5px 1.5px at 38% 12%, rgba(216,219,226,0.9), transparent),
-      radial-gradient(1px 1px at 52% 84%, rgba(216,219,226,0.6), transparent),
-      radial-gradient(1.5px 1.5px at 64% 34%, rgba(255,176,32,0.5), transparent),
-      radial-gradient(1px 1px at 76% 58%, rgba(216,219,226,0.8), transparent),
-      radial-gradient(1px 1px at 88% 16%, rgba(216,219,226,0.6), transparent),
-      radial-gradient(1.5px 1.5px at 94% 72%, rgba(216,219,226,0.9), transparent),
-      radial-gradient(1px 1px at 14% 90%, rgba(216,219,226,0.5), transparent),
-      radial-gradient(1px 1px at 46% 46%, rgba(216,219,226,0.7), transparent);
-    background-repeat:no-repeat; }
+      repeating-linear-gradient(180deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 3px),
+      repeating-linear-gradient(90deg, rgba(255,176,32,0.05) 0 1px, transparent 1px 46px),
+      repeating-linear-gradient(0deg, rgba(255,176,32,0.05) 0 1px, transparent 1px 46px),
+      radial-gradient(ellipse at 50% 0%, rgba(255,176,32,0.08), transparent 55%),
+      linear-gradient(165deg,#1c2026 0%,#111418 55%,#05070a 100%); }
   .static{ position:fixed; inset:0; z-index:0; pointer-events:none; opacity:0.05; mix-blend-mode:overlay;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
   .vignette{ position:fixed; inset:0; z-index:0; pointer-events:none;
@@ -59,16 +54,16 @@
   section{ position:relative; z-index:1; max-width:960px; margin:0 auto; padding:90px 28px; }
 
   /* ---- hero ---- */
-  .hero{ min-height:92vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
-    text-align:center; padding:28px; }
+  .hero{ min-height:auto; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; padding:64px 28px 48px; }
   .hero .kicker{ font-family:'Share Tech Mono',monospace; font-size:13px; letter-spacing:0.32em;
-    text-transform:uppercase; color:var(--amber); opacity:0.85; margin:0 0 18px; }
+    text-transform:uppercase; color:var(--amber); opacity:0.85; margin:0 0 14px; }
   .hero h1{ font-family:'Big Shoulders Stencil',sans-serif; font-weight:800; font-size:clamp(56px,13vw,132px);
     letter-spacing:0.02em; line-height:0.9; margin:0; color:var(--text);
     text-shadow:0 0 40px rgba(255,176,32,0.25), 0 6px 0 rgba(0,0,0,0.5); }
-  .hero .tagline{ font-family:'Oswald',sans-serif; font-weight:400; font-size:clamp(16px,2.4vw,21px);
-    letter-spacing:0.06em; color:var(--text-dim); margin:20px 0 0; max-width:38ch; }
-  .hero .scroll-cue{ margin-top:56px; font-family:'Share Tech Mono',monospace; font-size:11px;
+  .hero .tagline{ font-family:'Oswald',sans-serif; font-weight:400; font-size:clamp(15px,2vw,18px);
+    letter-spacing:0.06em; color:var(--text-dim); margin:16px 0 0; max-width:38ch; }
+  .hero .scroll-cue{ margin-top:32px; font-family:'Share Tech Mono',monospace; font-size:11px;
     letter-spacing:0.2em; text-transform:uppercase; color:var(--steel-lt); animation:pulse 2.4s ease infinite; }
   @keyframes pulse{ 0%,100%{opacity:0.4;} 50%{opacity:1;} }
 
@@ -78,6 +73,25 @@
   .sec-head h2{ font-family:'Oswald',sans-serif; font-weight:600; font-size:clamp(22px,3vw,30px);
     letter-spacing:0.04em; text-transform:uppercase; color:var(--text); margin:0; }
   .sec-head .rule{ flex:1; height:1px; background:linear-gradient(90deg, var(--steel-lt), transparent); }
+
+  /* ---- dashboard: tabbed console instead of stacked scroll sections ---- */
+  .dashboard{ position:relative; z-index:1; max-width:960px; margin:0 auto; padding:20px 28px 100px; }
+  .tabs{ display:flex; gap:2px; border-bottom:1px solid rgba(74,85,104,0.35); margin-bottom:44px;
+    overflow-x:auto; scrollbar-width:none; -ms-overflow-style:none; }
+  .tabs::-webkit-scrollbar{ display:none; }
+  .tab-btn{ display:flex; align-items:center; gap:10px; background:none; border:none; cursor:pointer;
+    font-family:'Oswald',sans-serif; font-weight:500; font-size:14px; letter-spacing:0.06em; text-transform:uppercase;
+    color:var(--text-dim); padding:14px 20px; position:relative; white-space:nowrap; transition:color 0.2s ease; }
+  .tab-btn .tab-num{ font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--steel-lt); }
+  .tab-btn:hover{ color:var(--text); }
+  .tab-btn.active{ color:var(--amber); }
+  .tab-btn.active .tab-num{ color:var(--amber-dim); }
+  .tab-btn.active::after{ content:''; position:absolute; left:0; right:0; bottom:-1px; height:2px; background:var(--amber);
+    box-shadow:0 0 8px rgba(255,176,32,0.6); }
+  .tab-btn:focus-visible{ outline:1px solid var(--amber); outline-offset:3px; }
+  .tab-panel[hidden]{ display:none; }
+  .tab-panel{ animation:panelIn 0.25s ease; }
+  @keyframes panelIn{ from{ opacity:0; transform:translateY(6px); } to{ opacity:1; transform:translateY(0); } }
 
   /* ---- transmission log ("what's happening now") ---- */
   .log{ background:var(--panel); border:1px solid rgba(255,176,32,0.15); border-radius:6px; padding:6px 0; }
@@ -106,21 +120,74 @@
   .briefing li{ font-size:16.5px; color:var(--text); margin-bottom:10px; }
   .briefing li:last-child{ margin-bottom:0; }
 
-  /* ---- crew: styled as inmate dossiers ---- */
-  .crew-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:22px; align-items:start; }
-  .crew-card{ background:var(--panel); border:1px solid rgba(74,85,104,0.35); border-radius:6px;
-    padding:24px; transition:border-color 0.2s ease, transform 0.2s ease; }
-  .crew-card:hover{ border-color:rgba(255,176,32,0.4); transform:translateY(-3px); }
-  .crew-card .card-head{ display:flex; align-items:center; gap:16px; margin:0 0 16px; }
-  .crew-avatar{ width:72px; height:72px; border-radius:50%; flex-shrink:0; overflow:hidden;
-    box-shadow:0 0 0 2px rgba(255,176,32,0.3), 0 6px 16px rgba(0,0,0,0.5); }
-  .crew-avatar img{ width:100%; height:100%; object-fit:cover; object-position:center 15%; }
-  .crew-card h3{ font-family:'Oswald',sans-serif; font-weight:600; font-size:19px; margin:0 0 4px; color:var(--text); }
-  .crew-card .role{ font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--amber-dim);
-    text-transform:uppercase; letter-spacing:0.04em; margin:0; line-height:1.4; }
-  .crew-card .blurb p{ margin:0 0 12px; font-size:15px; color:var(--text-dim); }
-  .crew-card .blurb p:last-child{ margin-bottom:0; }
-  .crew-card .blurb .line{ font-style:italic; color:var(--text); display:block; margin:0 0 12px; }
+  /* ---- crew: mugshot lineup — image-forward cards, full write-up lives in the dossier modal ---- */
+  .crew-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:18px; }
+  .crew-card{ position:relative; aspect-ratio:4/5; border-radius:6px; overflow:hidden; cursor:pointer;
+    background:var(--panel); border:1px solid rgba(74,85,104,0.35);
+    transition:border-color 0.2s ease, transform 0.2s ease; }
+  .crew-card:hover{ border-color:rgba(255,176,32,0.55); transform:translateY(-3px); }
+  .crew-card:focus-visible{ outline:1px solid var(--amber); outline-offset:3px; }
+  .crew-card img{ width:100%; height:100%; object-fit:cover; object-position:center 15%;
+    display:block; filter:grayscale(0.15) contrast(1.05); transition:transform 0.35s ease, filter 0.35s ease; }
+  .crew-card:hover img{ transform:scale(1.06); filter:grayscale(0) contrast(1.1); }
+  .crew-card .card-index{ position:absolute; top:10px; left:10px; z-index:1;
+    font-family:'Share Tech Mono',monospace; font-size:10.5px; letter-spacing:0.08em; color:var(--amber);
+    background:rgba(5,6,10,0.65); border:1px solid rgba(255,176,32,0.4); border-radius:3px; padding:2px 7px; }
+  .crew-card .card-caption{ position:absolute; left:0; right:0; bottom:0; z-index:1; padding:30px 14px 14px;
+    background:linear-gradient(to top, rgba(5,6,10,0.95) 0%, rgba(5,6,10,0.78) 55%, transparent 100%); }
+  .crew-card .card-caption h3{ font-family:'Oswald',sans-serif; font-weight:600; font-size:17px;
+    margin:0 0 3px; color:var(--text); }
+  .crew-card .card-caption .role{ font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--amber-dim);
+    text-transform:uppercase; letter-spacing:0.03em; margin:0; line-height:1.35; }
+
+  /* ---- dossier modal: full case file for a clicked prisoner ---- */
+  .dossier-modal{ position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; padding:24px; }
+  .dossier-modal[hidden]{ display:none; }
+  .dossier-backdrop{ position:absolute; inset:0; background:rgba(3,4,7,0.88); }
+  .dossier-box{ position:relative; z-index:1; width:100%; max-width:820px; max-height:86vh; overflow-y:auto;
+    background:var(--panel); border:1px solid rgba(255,176,32,0.25); border-radius:8px;
+    box-shadow:0 20px 60px rgba(0,0,0,0.6); animation:panelIn 0.2s ease; }
+  .dossier-content{ display:grid; grid-template-columns:280px 1fr; }
+  .dossier-portrait{ position:relative; height:100%; min-height:260px;
+    background:
+      repeating-linear-gradient(180deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 3px),
+      repeating-linear-gradient(90deg, rgba(255,176,32,0.05) 0 1px, transparent 1px 46px),
+      repeating-linear-gradient(0deg, rgba(255,176,32,0.05) 0 1px, transparent 1px 46px),
+      radial-gradient(ellipse at 50% 0%, rgba(255,176,32,0.08), transparent 55%),
+      var(--void-blue); }
+  .dossier-portrait img{ width:100%; height:100%; object-fit:cover; object-position:center; display:block; }
+  .dossier-text{ display:flex; flex-direction:column; height:100%; min-height:0; padding:30px 34px; }
+  .dossier-index{ font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--amber-dim);
+    letter-spacing:0.1em; text-transform:uppercase; margin:0 0 8px; flex-shrink:0; }
+  .dossier-text h3{ font-family:'Oswald',sans-serif; font-weight:600; font-size:26px; margin:0 0 6px; color:var(--text);
+    flex-shrink:0; }
+  .dossier-role{ font-family:'Share Tech Mono',monospace; font-size:12px; color:var(--amber);
+    text-transform:uppercase; letter-spacing:0.04em; margin:0 0 22px; flex-shrink:0; }
+  .dossier-blurb{ flex:1 1 auto; min-height:0; overflow-y:auto; padding-right:10px; scrollbar-width:thin; }
+  .dossier-blurb p{ margin:0 0 12px; font-size:15px; color:var(--text-dim); line-height:1.65; }
+  .dossier-blurb p:last-child{ margin-bottom:0; }
+  .dossier-blurb .line{ font-style:italic; color:var(--text); display:block; margin:0 0 12px; }
+  .dossier-blurb::-webkit-scrollbar{ width:6px; }
+  .dossier-blurb::-webkit-scrollbar-thumb{ background:rgba(255,176,32,0.3); border-radius:3px; }
+  .dossier-close{ position:absolute; top:12px; right:12px; z-index:2; width:32px; height:32px; border-radius:50%;
+    background:rgba(5,6,10,0.65); border:1px solid rgba(74,85,104,0.5); color:var(--text);
+    font-size:18px; line-height:1; cursor:pointer; }
+  .dossier-close:hover{ color:var(--amber); border-color:var(--amber); }
+  .dossier-footer{ display:flex; align-items:center; justify-content:space-between; margin-top:20px;
+    padding-top:18px; border-top:1px solid rgba(74,85,104,0.28); flex-shrink:0; }
+  .dossier-nav{ background:none; border:1px solid rgba(74,85,104,0.5); color:var(--text-dim);
+    font-family:'Share Tech Mono',monospace; font-size:11px; letter-spacing:0.08em; text-transform:uppercase;
+    padding:8px 14px; border-radius:4px; cursor:pointer; transition:color 0.2s ease, border-color 0.2s ease; }
+  .dossier-nav:hover{ color:var(--amber); border-color:rgba(255,176,32,0.5); }
+  @media (min-width:641px){
+    .dossier-content{ grid-template-rows:680px; }
+  }
+  @media (max-width:640px){
+    .dossier-content{ grid-template-columns:1fr; }
+    .dossier-portrait{ height:auto; min-height:220px; }
+    .dossier-text{ height:auto; }
+    .dossier-blurb{ flex:none; overflow-y:visible; }
+  }
 
   footer{ position:relative; z-index:1; text-align:center; padding:40px 28px 60px; }
   footer a{ font-family:'Share Tech Mono',monospace; font-size:12px; letter-spacing:0.14em;
@@ -132,7 +199,7 @@
 </head>
 <body>
 
-  <div class="stars"></div>
+  <div class="hud-bg"></div>
   <div class="static"></div>
   <div class="vignette"></div>
 
@@ -143,46 +210,80 @@
     <p class="scroll-cue">▼ transmission follows ▼</p>
   </section>
 
-  <section id="log">
-    <div class="sec-head">
-      <span class="tag">// FACILITY LOG</span>
-      <h2>What's Happening Now</h2>
-      <span class="rule"></span>
+  <section class="dashboard">
+    <div class="tabs" role="tablist" aria-label="Case file sections">
+      <button class="tab-btn active" role="tab" aria-selected="true" aria-controls="panel-log" id="tab-log" data-target="panel-log">
+        <span class="tab-num">01</span><span class="tab-label">Facility Log</span>
+      </button>
+      <button class="tab-btn" role="tab" aria-selected="false" aria-controls="panel-situation" id="tab-situation" data-target="panel-situation">
+        <span class="tab-num">02</span><span class="tab-label">Briefing</span>
+      </button>
+      <button class="tab-btn" role="tab" aria-selected="false" aria-controls="panel-crew" id="tab-crew" data-target="panel-crew">
+        <span class="tab-num">03</span><span class="tab-label">Intake Records</span>
+      </button>
     </div>
-    <div class="log" id="logList"></div>
-  </section>
 
-  <section id="situation" class="synopsis">
-    <div class="sec-head">
-      <span class="tag">// BRIEFING</span>
-      <h2>The Situation</h2>
-      <span class="rule"></span>
+    <div class="tab-panel active" id="panel-log" role="tabpanel" aria-labelledby="tab-log">
+      <div class="sec-head">
+        <span class="tag">// FACILITY LOG</span>
+        <h2>What's Happening Now</h2>
+        <span class="rule"></span>
+      </div>
+      <div class="log" id="logList"></div>
     </div>
-    <p>This era began the night an assassin's blade found Emperor Strephon and his heirs, and the Iridium Throne has stood empty — and violently contested — ever since. Archduke Dulinor. Margaret of Antares. A dozen lesser claimants with a dozen lesser fleets, each certain the crown was theirs by right. Ten years of civil war between them has left the Third Imperium hollowed out from the inside: no side strong enough to win, none willing to be the first to stop.</p>
-    <p>Out on the fringes, where the old Imperial lines have gone ragged and unpoliced, that exhaustion has curdled into something else entirely — a frontier of political intrigue, mercenary contracts, and smuggling runs, where a tank of fuel or an honest trade deal is worth as much as blood. This is the Margin: the volatile buffer between the Third Imperium, the K'kree Two Thousand Worlds, and <span class="redacted" title="not yet determined">a third power yet to be named</span> — a chaotic scatter of unaffiliated worlds, pocket empires, and minor alien races that answer to no one and trust even less.</p>
-    <p class="ooc-note">Sector and subsector detail will be generated at the table as it's needed — nothing about the surrounding systems is fixed until it's actually been played.</p>
 
-    <div class="briefing">
-      <h3>// Where You Are Now — The Rock</h3>
-      <p style="margin:0 0 14px">You are all prisoners on The Rock, an asteroid adrift somewhere in the black. In your time here, you've learned a few things:</p>
-      <ol>
-        <li>The guards rotate out every eight months. Not one of them has ever rotated back in.</li>
-        <li>This place moves. You've felt it shift, more than once, and there's no window to tell you where it's gone.</li>
-        <li>Whatever The Rock is on the paperwork, it isn't a prison. Not really. This is a black site.</li>
-      </ol>
-    </div>
-  </section>
+    <div class="tab-panel synopsis" id="panel-situation" role="tabpanel" aria-labelledby="tab-situation" hidden>
+      <div class="sec-head">
+        <span class="tag">// BRIEFING</span>
+        <h2>The Situation</h2>
+        <span class="rule"></span>
+      </div>
+      <p>This era began the night an assassin's blade found Emperor Strephon and his heirs, and the Iridium Throne has stood empty — and violently contested — ever since. Archduke Dulinor. Margaret of Antares. A dozen lesser claimants with a dozen lesser fleets, each certain the crown was theirs by right. Ten years of civil war between them has left the Third Imperium hollowed out from the inside: no side strong enough to win, none willing to be the first to stop.</p>
+      <p>Out on the fringes, where the old Imperial lines have gone ragged and unpoliced, that exhaustion has curdled into something else entirely — a frontier of political intrigue, mercenary contracts, and smuggling runs, where a tank of fuel or an honest trade deal is worth as much as blood. This is the Margin: the volatile buffer between the Third Imperium, the K'kree Two Thousand Worlds, and <span class="redacted" title="not yet determined">a third power yet to be named</span> — a chaotic scatter of unaffiliated worlds, pocket empires, and minor alien races that answer to no one and trust even less.</p>
+      <p class="ooc-note">Sector and subsector detail will be generated at the table as it's needed — nothing about the surrounding systems is fixed until it's actually been played.</p>
 
-  <section id="crew">
-    <div class="sec-head">
-      <span class="tag">// INTAKE RECORDS</span>
-      <h2>The Population</h2>
-      <span class="rule"></span>
+      <div class="briefing">
+        <h3>// Where You Are Now — The Rock</h3>
+        <p style="margin:0 0 14px">You are all prisoners on The Rock, an asteroid adrift somewhere in the black. In your time here, you've learned a few things:</p>
+        <ol>
+          <li>The guards rotate out every eight months. Not one of them has ever rotated back in.</li>
+          <li>This place moves. You've felt it shift, more than once, and there's no window to tell you where it's gone.</li>
+          <li>Whatever The Rock is on the paperwork, it isn't a prison. Not really. This is a black site.</li>
+        </ol>
+      </div>
     </div>
-    <div class="crew-grid" id="crewGrid"></div>
+
+    <div class="tab-panel" id="panel-crew" role="tabpanel" aria-labelledby="tab-crew" hidden>
+      <div class="sec-head">
+        <span class="tag">// INTAKE RECORDS</span>
+        <h2>The Population</h2>
+        <span class="rule"></span>
+      </div>
+      <div class="crew-grid" id="crewGrid"></div>
+    </div>
   </section>
 
   <footer><a href="https://919gaming.com/">&larr; Back to 919 Gaming</a></footer>
+
+  <div class="dossier-modal" id="dossierModal" hidden>
+    <div class="dossier-backdrop" id="dossierBackdrop"></div>
+    <div class="dossier-box" role="dialog" aria-modal="true" aria-labelledby="dossierName">
+      <button class="dossier-close" id="dossierClose" aria-label="Close case file">&times;</button>
+      <div class="dossier-content">
+        <div class="dossier-portrait"><img id="dossierImg" src="" alt=""></div>
+        <div class="dossier-text">
+          <p class="dossier-index" id="dossierIndex"></p>
+          <h3 id="dossierName"></h3>
+          <p class="dossier-role" id="dossierRole"></p>
+          <div class="dossier-blurb" id="dossierBlurb"></div>
+          <div class="dossier-footer">
+            <button class="dossier-nav" id="dossierPrev">&larr; Previous File</button>
+            <button class="dossier-nav" id="dossierNext">Next File &rarr;</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
 <script>
   /* =========================================================================
@@ -205,7 +306,7 @@
               of a plain string to render it as an italicized spoken/quoted line
      ========================================================================= */
   const characters = [
-    { name: 'Kael', portrait: 'assets/Kael.png', role: 'FILE STATUS: CLASSIFIED', blurb: [
+    { name: 'Kael', portrait: 'assets/Kael.png', dossierPortrait: 'assets/Kaelportrait.png', role: 'FILE STATUS: CLASSIFIED', blurb: [
       'His cellmates have heard fragments of strange conversations in languages no one recognizes. Other nights, he\'ll wake abruptly and spend hours staring at the ceiling as if listening to something no one else can hear.',
       'Kael has avoided every opportunity to prove himself with violence. The few inmates who\'ve tried to intimidate him discovered he\'s unnervingly fast.',
       'One day an inmate joked,',
@@ -215,22 +316,22 @@
       'Then he went back to eating. He never smiled. Nobody knows if he was joking.',
       'Every couple weeks someone in a very expensive suit comes asking questions about him. They never visit. They just ask, then leave. Even the warden seems nervous afterward.'
     ] },
-    { name: 'Mistarion', portrait: 'assets/Mistarion.png', role: 'STATUS: MEDITATIVE — MEMORY: REDACTED', blurb: [
+    { name: 'Mistarion', portrait: 'assets/Mistarion.png', dossierPortrait: 'assets/mistportrait.png', role: 'STATUS: MEDITATIVE — MEMORY: REDACTED', blurb: [
       'A friendly person, as long as you remain in his good graces. If you do not, he can be rather petty and vindictive — graver insults lead to grave injury. As an older elf, he may be a bit set in his ways and bristle at new situations, but he handles it with the grace and stoicism of all great elves. He is rarely shaken, or at least appears that way.',
       'For all this, Mistarion can mostly be found meditating. Largely unconcerned with the politics of prison life, his time is dominated by a lack of memories — a troublesome burden for a wizard of his talents. What kind of diviner is unable to divine the past of his own mind? Left only with a calling to the stars, even without a window, he "sees" beyond the confines of this physical prison. Something any observer can discern in just a short while.'
     ] },
-    { name: 'Heishi Kyu', portrait: 'assets/HeishiKyu.png', role: 'STATUS: SILENT', blurb: [
+    { name: 'Heishi Kyu', portrait: 'assets/HeishiKyu.png', dossierPortrait: 'assets/HeishiKyuportrait.png', role: 'STATUS: SILENT', blurb: [
       'She doesn\'t talk much, though she looks like much is concerning her. She practices Qigong at length. She\'s cold. Distant. And, hopefully, a lot stronger than she looks.'
     ] },
-    { name: 'Verum-Gaea', portrait: 'assets/Verum-Gaea.png', role: 'TITLE: CHIEF-OBSERVER, HOUSE VERUM (REVOKED)', blurb: [
+    { name: 'Verum-Gaea', portrait: 'assets/Verum-Gaea.png', dossierPortrait: 'assets/verumportrait.png', role: 'TITLE: CHIEF-OBSERVER, HOUSE VERUM (REVOKED)', blurb: [
       'Has not seen his family since the political upheaval on his planet. He often wonders what happened to his Sol-Born, Cartouche-Bearer, and Sol-Bound. The first thing he said to each of you upon meeting was:',
       { line: '"You speak to the Chief-Observer of House Verum. The Citadel may have revoked my docking codes, but they cannot revoke my blood."' }
     ] },
-    { name: 'ND-E', portrait: 'assets/ND-E.png', role: 'MODEL: UNKNOWN — STATUS: SERVING TIME', blurb: [
+    { name: 'ND-E', portrait: 'assets/ND-E.png', dossierPortrait: 'assets/ND-Eportrait.png', role: 'MODEL: UNKNOWN — STATUS: SERVING TIME', blurb: [
       'ND-E just wants to serve his time. He speaks his mind and doesn\'t lie, even if he prooooobably should. He distrusts organics, but distrusts mechanicals even more — and will tell you why at length, if given the chance.',
       'He is tired. He is old.'
     ] },
-    { name: 'Velveteen', portrait: 'assets/Velveteen.png', role: 'FORMERLY: MAW STATION ENGINEERING', blurb: [
+    { name: 'Velveteen', portrait: 'assets/Velveteen.png', dossierPortrait: 'assets/Velveteenportrait.png', role: 'FORMERLY: MAW STATION ENGINEERING', blurb: [
       'Velveteen is. He just... is. He\'s smart, but mellow, and vibes with the gravitational waves all around us, always.',
       'He left the family business — working the Maw Stations, a family of scientists who maintained the warp engines (or whatever they\'re called). Velveteen just wanted to get away. Sure, he could do all that work, but he didn\'t want to calculate gravitational waves. He wanted to feel them.'
     ] }
@@ -246,20 +347,76 @@
     logList.appendChild(el);
   });
 
-  const crewGrid = document.getElementById('crewGrid');
-  characters.forEach(c => {
-    const el = document.createElement('div');
-    el.className = 'crew-card';
-    const paras = c.blurb.map(p => typeof p === 'object'
+  function blurbHTML(blurb){
+    return blurb.map(p => typeof p === 'object'
       ? '<span class="line">'+p.line+'</span>'
       : '<p>'+p+'</p>').join('');
+  }
+
+  const crewGrid = document.getElementById('crewGrid');
+  characters.forEach((c, i) => {
+    const el = document.createElement('div');
+    el.className = 'crew-card';
+    el.tabIndex = 0;
     el.innerHTML =
-      '<div class="card-head">' +
-        '<div class="crew-avatar"><img src="'+c.portrait+'" alt="'+c.name+'"></div>' +
-        '<div><h3>'+c.name+'</h3><p class="role">'+c.role+'</p></div>' +
-      '</div>' +
-      '<div class="blurb">'+paras+'</div>';
+      '<span class="card-index">P-'+String(i+1).padStart(2,'0')+'</span>' +
+      '<img src="'+c.portrait+'" alt="'+c.name+'">' +
+      '<div class="card-caption"><h3>'+c.name+'</h3><p class="role">'+c.role+'</p></div>';
+    el.addEventListener('click', () => openDossier(i));
+    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDossier(i); } });
     crewGrid.appendChild(el);
+  });
+
+  /* ---- dossier modal ---- */
+  const dossierModal = document.getElementById('dossierModal');
+  const dossierImg = document.getElementById('dossierImg');
+  const dossierIndex = document.getElementById('dossierIndex');
+  const dossierName = document.getElementById('dossierName');
+  const dossierRole = document.getElementById('dossierRole');
+  const dossierBlurb = document.getElementById('dossierBlurb');
+  let dossierOpenIndex = null;
+
+  function openDossier(i){
+    const c = characters[i];
+    dossierOpenIndex = i;
+    dossierImg.src = c.dossierPortrait;
+    dossierImg.alt = c.name;
+    dossierIndex.textContent = 'Case File P-'+String(i+1).padStart(2,'0');
+    dossierName.textContent = c.name;
+    dossierRole.textContent = c.role;
+    dossierBlurb.innerHTML = blurbHTML(c.blurb);
+    dossierModal.hidden = false;
+    dossierModal.querySelector('.dossier-box').scrollTop = 0;
+  }
+  function closeDossier(){ dossierModal.hidden = true; dossierOpenIndex = null; }
+  function stepDossier(delta){
+    if (dossierOpenIndex === null) return;
+    openDossier((dossierOpenIndex + delta + characters.length) % characters.length);
+  }
+
+  document.getElementById('dossierClose').addEventListener('click', closeDossier);
+  document.getElementById('dossierBackdrop').addEventListener('click', closeDossier);
+  document.getElementById('dossierPrev').addEventListener('click', () => stepDossier(-1));
+  document.getElementById('dossierNext').addEventListener('click', () => stepDossier(1));
+  document.addEventListener('keydown', e => {
+    if (dossierModal.hidden) return;
+    if (e.key === 'Escape') closeDossier();
+    if (e.key === 'ArrowLeft') stepDossier(-1);
+    if (e.key === 'ArrowRight') stepDossier(1);
+  });
+
+  /* ---- tab dashboard ---- */
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabBtns.forEach(b => { b.classList.remove('active'); b.setAttribute('aria-selected', 'false'); });
+      document.querySelectorAll('.tab-panel').forEach(p => { p.classList.remove('active'); p.hidden = true; });
+      btn.classList.add('active');
+      btn.setAttribute('aria-selected', 'true');
+      const panel = document.getElementById(btn.dataset.target);
+      panel.classList.add('active');
+      panel.hidden = false;
+    });
   });
 </script>
 </body>
