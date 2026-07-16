@@ -56,6 +56,8 @@
   /* ---- hero ---- */
   .hero{ min-height:auto; display:flex; flex-direction:column; align-items:center; justify-content:center;
     text-align:center; padding:64px 28px 48px; }
+  .hero .badge{ width:132px; height:auto; margin:0 0 22px;
+    filter:drop-shadow(0 0 26px rgba(255,176,32,0.35)) drop-shadow(0 8px 18px rgba(0,0,0,0.6)); }
   .hero .kicker{ font-family:'Share Tech Mono',monospace; font-size:13px; letter-spacing:0.32em;
     text-transform:uppercase; color:var(--amber); opacity:0.85; margin:0 0 14px; }
   .hero h1{ font-family:'Big Shoulders Stencil',sans-serif; font-weight:800; font-size:clamp(56px,13vw,132px);
@@ -189,6 +191,27 @@
     .dossier-blurb{ flex:none; overflow-y:visible; }
   }
 
+  /* ---- Velveteen's card: relaxed/chill, "vibes with gravitational waves" —
+     cool teal in place of the amber HUD accent, plus slow ripple rings that
+     radiate from the card's center like a gentle gravity well. ---- */
+  .dossier-theme-velveteen{ --chill:#7fe0cf; --chill-dim:#4fae9c; }
+  .dossier-theme-velveteen .dossier-index{ color:var(--chill-dim); }
+  .dossier-theme-velveteen .dossier-role{ color:var(--chill); }
+  .dossier-theme-velveteen .dossier-close:hover{ color:var(--chill); border-color:var(--chill); }
+  .dossier-theme-velveteen .dossier-footer{ border-top-color:rgba(127,224,207,0.25); }
+  .dossier-theme-velveteen .dossier-nav:hover{ color:var(--chill); border-color:rgba(127,224,207,0.5); }
+  .dossier-theme-velveteen .dossier-blurb::-webkit-scrollbar-thumb{ background:rgba(127,224,207,0.35); }
+  .dossier-theme-velveteen .dossier-content{ position:relative; overflow:hidden; }
+  .dossier-theme-velveteen .dossier-content::after{
+    content:''; position:absolute; inset:0; z-index:5; pointer-events:none; mix-blend-mode:screen;
+    background:repeating-radial-gradient(circle at 50% 50%,
+      rgba(127,224,207,0.16) 0px, rgba(127,224,207,0.16) 1.5px, transparent 1.5px, transparent 46px);
+    animation:velveteenGravity 7s ease-in-out infinite; }
+  @keyframes velveteenGravity{
+    0%,100%{ opacity:0.5; transform:scale(1); }
+    50%{ opacity:0.95; transform:scale(1.06); } }
+  @media (prefers-reduced-motion: reduce){ .dossier-theme-velveteen .dossier-content::after{ animation:none; } }
+
   footer{ position:relative; z-index:1; text-align:center; padding:40px 28px 60px; }
   footer a{ font-family:'Share Tech Mono',monospace; font-size:12px; letter-spacing:0.14em;
     text-transform:uppercase; color:var(--text-dim); text-decoration:none; }
@@ -204,6 +227,7 @@
   <div class="vignette"></div>
 
   <section class="hero">
+    <img class="badge" src="assets/logo.png" alt="Hard Times crest">
     <p class="kicker">Dark Matter &nbsp;·&nbsp; The Margin Sector</p>
     <h1>HARD TIMES</h1>
     <p class="tagline">You are prisoners on The Rock. Whatever it is on paper, it isn't really a prison.</p>
@@ -369,24 +393,34 @@
 
   /* ---- dossier modal ---- */
   const dossierModal = document.getElementById('dossierModal');
+  const dossierBox = dossierModal.querySelector('.dossier-box');
   const dossierImg = document.getElementById('dossierImg');
   const dossierIndex = document.getElementById('dossierIndex');
   const dossierName = document.getElementById('dossierName');
   const dossierRole = document.getElementById('dossierRole');
   const dossierBlurb = document.getElementById('dossierBlurb');
+  const dossierPrev = document.getElementById('dossierPrev');
+  const dossierNext = document.getElementById('dossierNext');
   let dossierOpenIndex = null;
 
+  /* Per-prisoner card styling: add a ".dossier-theme-<slug>" CSS block (see
+     "dossier modal" styles above) to give a character their own look. No
+     matching block = default amber HUD styling, so this is opt-in per card. */
   function openDossier(i){
     const c = characters[i];
     dossierOpenIndex = i;
+    const slug = c.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    dossierBox.className = 'dossier-box dossier-theme-' + slug;
     dossierImg.src = c.dossierPortrait;
     dossierImg.alt = c.name;
     dossierIndex.textContent = 'Case File P-'+String(i+1).padStart(2,'0');
     dossierName.textContent = c.name;
     dossierRole.textContent = c.role;
     dossierBlurb.innerHTML = blurbHTML(c.blurb);
+    dossierPrev.textContent = '← ' + characters[(i - 1 + characters.length) % characters.length].name;
+    dossierNext.textContent = characters[(i + 1) % characters.length].name + ' →';
     dossierModal.hidden = false;
-    dossierModal.querySelector('.dossier-box').scrollTop = 0;
+    dossierBox.scrollTop = 0;
   }
   function closeDossier(){ dossierModal.hidden = true; dossierOpenIndex = null; }
   function stepDossier(delta){
