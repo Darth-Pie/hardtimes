@@ -1,0 +1,7 @@
+.git
+.git/**
+.wrangler
+.wrangler/**
+wrangler.jsonc
+desktop.ini
+**/desktop.ini
