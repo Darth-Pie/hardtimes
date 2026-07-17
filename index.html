@@ -92,6 +92,7 @@
   .tab-btn.active::after{ content:''; position:absolute; left:0; right:0; bottom:-1px; height:2px; background:var(--amber);
     box-shadow:0 0 8px rgba(255,176,32,0.6); }
   .tab-btn:focus-visible{ outline:1px solid var(--amber); outline-offset:3px; }
+  .tab-btn[hidden]{ display:none; }
   .tab-panel[hidden]{ display:none; }
   .tab-panel{ animation:panelIn 0.25s ease; }
   @keyframes panelIn{ from{ opacity:0; transform:translateY(6px); } to{ opacity:1; transform:translateY(0); } }
@@ -111,16 +112,29 @@
   .log-entry p{ margin:0; color:var(--text-dim); font-size:15.5px; }
   .log-entry .author{ font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--text-dim); opacity:0.7; margin-top:8px; }
 
-  /* ---- facility log controls: login/logout, add-entry, admin actions ---- */
+  /* ---- top-right nav: Warden login/logout (matches 919gaming.com's top-nav) ---- */
+  .top-nav{ position:fixed; top:20px; right:24px; z-index:10;
+    display:flex; flex-direction:column; align-items:flex-end; gap:10px; }
+  .top-nav a, .top-nav .log-status{ display:inline-flex; align-items:center; gap:7px; white-space:nowrap;
+    font-family:'Share Tech Mono',monospace; font-size:11px; letter-spacing:0.1em; text-transform:uppercase;
+    color:var(--amber); opacity:0.85; text-decoration:none; transition:opacity 0.2s ease, color 0.2s ease; }
+  .top-nav a:hover{ opacity:1; }
+  .top-nav svg{ flex-shrink:0; width:13px; height:13px; }
+  .top-nav .log-status{ color:var(--text-dim); opacity:0.8; }
+
+  /* ---- facility log controls: add-entry + per-entry admin actions ---- */
+  .sec-head-tight{ margin-bottom:14px; }
   .log-controls{ display:flex; align-items:center; flex-wrap:wrap; gap:14px; margin:0 0 18px; }
-  .log-link, .log-admin-actions button{ font-family:'Share Tech Mono',monospace; font-size:12px; letter-spacing:0.06em;
+  .log-link, .log-admin-actions button, .acct-actions button{
+    display:inline-flex; align-items:center; gap:6px;
+    font-family:'Share Tech Mono',monospace; font-size:12px; letter-spacing:0.06em;
     text-transform:uppercase; color:var(--amber); background:none; border:1px solid rgba(255,176,32,0.4);
-    border-radius:4px; padding:6px 12px; cursor:pointer; text-decoration:none; display:inline-block; }
-  .log-link:hover, .log-admin-actions button:hover{ background:rgba(255,176,32,0.1); }
-  .log-status{ font-family:'Share Tech Mono',monospace; font-size:12px; color:var(--text-dim); }
+    border-radius:4px; padding:6px 12px; cursor:pointer; text-decoration:none; }
+  .log-link:hover, .log-admin-actions button:hover, .acct-actions button:hover{ background:rgba(255,176,32,0.1); }
+  .log-link svg, .log-admin-actions button svg, .acct-actions button svg{ flex-shrink:0; width:13px; height:13px; }
   .log-admin-actions{ display:flex; gap:8px; margin-top:12px; }
-  .log-admin-actions .btn-danger{ color:#e08a8a; border-color:rgba(220,80,80,0.5); }
-  .log-admin-actions .btn-danger:hover{ background:rgba(220,80,80,0.12); }
+  .log-admin-actions .btn-danger, .acct-actions .btn-danger{ color:#e08a8a; border-color:rgba(220,80,80,0.5); }
+  .log-admin-actions .btn-danger:hover, .acct-actions .btn-danger:hover{ background:rgba(220,80,80,0.12); }
 
   .entry-form{ background:var(--panel); border:1px solid rgba(255,176,32,0.25); border-radius:6px;
     padding:20px 24px; margin:0 0 18px; }
@@ -133,9 +147,11 @@
   .entry-form textarea{ min-height:90px; resize:vertical; }
   .entry-form input[type=text]:focus, .entry-form textarea:focus{ outline:none; border-color:var(--amber); }
   .entry-form-actions{ display:flex; gap:10px; margin-top:16px; }
-  .entry-form-actions button{ font-family:'Oswald',sans-serif; font-weight:600; font-size:13px; letter-spacing:0.06em;
+  .entry-form-actions button{ display:inline-flex; align-items:center; gap:7px;
+    font-family:'Oswald',sans-serif; font-weight:600; font-size:13px; letter-spacing:0.06em;
     text-transform:uppercase; padding:9px 16px; border-radius:4px; border:none; cursor:pointer;
     background:var(--amber); color:#1a1305; }
+  .entry-form-actions button svg{ flex-shrink:0; width:14px; height:14px; }
   .entry-form-actions button:hover{ filter:brightness(1.08); }
   .entry-form-actions .btn-ghost{ background:none; border:1px solid var(--steel-lt); color:var(--text-dim); }
   .entry-form-msg{ font-family:'Share Tech Mono',monospace; font-size:12px; color:#e08a8a; margin:12px 0 0; }
@@ -269,6 +285,8 @@
   <div class="static"></div>
   <div class="vignette"></div>
 
+  <div class="top-nav" id="topNav"></div>
+
   <section class="hero">
     <img class="badge" src="assets/logo.png" alt="Hard Times crest">
     <p class="kicker">Dark Matter &nbsp;·&nbsp; The Margin Sector</p>
@@ -294,7 +312,7 @@
     </div>
 
     <div class="tab-panel active" id="panel-log" role="tabpanel" aria-labelledby="tab-log">
-      <div class="sec-head">
+      <div class="sec-head sec-head-tight">
         <span class="tag">// FACILITY LOG</span>
         <h2>What's Happening Now</h2>
         <span class="rule"></span>
@@ -310,8 +328,8 @@
         <label for="ef-body">Body</label>
         <textarea id="ef-body"></textarea>
         <div class="entry-form-actions">
-          <button type="button" id="entryFormSubmit">Post</button>
-          <button type="button" id="entryFormCancel" class="btn-ghost">Cancel</button>
+          <button type="button" id="entryFormSubmit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Post</button>
+          <button type="button" id="entryFormCancel" class="btn-ghost"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>Cancel</button>
         </div>
         <p class="entry-form-msg" id="entryFormMsg"></p>
       </div>
@@ -444,12 +462,28 @@
     return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
+  /* Small stroke-style icons (feather-icons-inspired), one per action --
+     sized/colored via CSS (fill/stroke: currentColor), not the markup. */
+  const ICONS = {
+    login: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>',
+    logout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
+    add: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+    edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+    approve: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+    reject: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+    delete: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>',
+    block: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="5.5" y1="5.5" x2="18.5" y2="18.5"/></svg>',
+    unblock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>',
+    remove: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="11" x2="23" y2="11"/></svg>'
+  };
+
   let currentSession = { loggedIn: false, isGod: false, isContributor: false };
   let lastLogEntries = [];
   let editingEntryId = null; // null while the form is in "add" mode
 
   const logList = document.getElementById('logList');
   const logControls = document.getElementById('logControls');
+  const topNav = document.getElementById('topNav');
   const entryForm = document.getElementById('entryForm');
   const efDate = document.getElementById('ef-date');
   const efStatus = document.getElementById('ef-status');
@@ -459,18 +493,21 @@
   const tabAccounts = document.getElementById('tab-accounts');
   const accountsList = document.getElementById('accountsList');
 
-  function renderLogControls(){
+  function renderTopNav(){
     const parts = [];
     if (currentSession.loggedIn){
-      parts.push('<span class="log-status">Logged in as ' + escapeHtml(currentSession.username) + '</span>');
-      parts.push('<a class="log-link" href="/warden/logout">Log out</a>');
-      if (currentSession.isGod || currentSession.isContributor){
-        parts.push('<button type="button" class="log-link" id="addEntryBtn">+ Add Entry</button>');
-      }
+      parts.push('<span class="log-status">' + escapeHtml(currentSession.username) + '</span>');
+      parts.push('<a href="/warden/logout">' + ICONS.logout + 'Log out</a>');
     } else {
-      parts.push('<a class="log-link" href="/warden">Warden Login</a>');
+      parts.push('<a href="/warden">' + ICONS.login + 'Warden Login</a>');
     }
-    logControls.innerHTML = parts.join('');
+    topNav.innerHTML = parts.join('');
+  }
+
+  function renderLogControls(){
+    logControls.innerHTML = (currentSession.isGod || currentSession.isContributor)
+      ? '<button type="button" class="log-link" id="addEntryBtn">' + ICONS.add + 'Add Entry</button>'
+      : '';
     const addBtn = document.getElementById('addEntryBtn');
     if (addBtn) addBtn.addEventListener('click', () => openEntryForm(null));
   }
@@ -482,7 +519,7 @@
     efTitle.value = entry ? entry.title : '';
     efBody.value = entry ? entry.body : '';
     entryFormMsg.textContent = '';
-    document.getElementById('entryFormSubmit').textContent = entry ? 'Save' : 'Post';
+    document.getElementById('entryFormSubmit').innerHTML = entry ? (ICONS.edit + 'Save') : (ICONS.add + 'Post');
     entryForm.hidden = false;
     efDate.focus();
   }
@@ -533,11 +570,11 @@
         if (u.authorName) html += '<p class="author">Submitted by '+escapeHtml(u.authorName)+'</p>';
         html += '<div class="log-admin-actions">';
         if (u.approved === false){
-          html += '<button data-act="approve" data-id="'+u.id+'">Approve</button>';
-          html += '<button class="btn-danger" data-act="delete" data-id="'+u.id+'">Reject</button>';
+          html += '<button data-act="approve" data-id="'+u.id+'">'+ICONS.approve+'Approve</button>';
+          html += '<button class="btn-danger" data-act="delete" data-id="'+u.id+'">'+ICONS.reject+'Reject</button>';
         } else {
-          html += '<button data-act="edit" data-id="'+u.id+'">Edit</button>';
-          html += '<button class="btn-danger" data-act="delete" data-id="'+u.id+'">Delete</button>';
+          html += '<button data-act="edit" data-id="'+u.id+'">'+ICONS.edit+'Edit</button>';
+          html += '<button class="btn-danger" data-act="delete" data-id="'+u.id+'">'+ICONS.delete+'Delete</button>';
         }
         html += '</div>';
       }
@@ -582,8 +619,8 @@
         '<p class="acct-meta">ID '+escapeHtml(u.discordId)+' &middot; first login '+new Date(u.firstLogin).toLocaleDateString()+' &middot; last login '+new Date(u.lastLogin).toLocaleDateString()+'</p></div>';
       if (u.role !== 'god'){
         html += '<div class="acct-actions">' +
-          '<button data-act="'+(u.blocked ? 'unblock' : 'block')+'" data-id="'+u.discordId+'">'+(u.blocked ? 'Unblock' : 'Block')+'</button>' +
-          '<button class="btn-danger" data-act="remove" data-id="'+u.discordId+'">Remove</button></div>';
+          '<button data-act="'+(u.blocked ? 'unblock' : 'block')+'" data-id="'+u.discordId+'">'+(u.blocked ? ICONS.unblock+'Unblock' : ICONS.block+'Block')+'</button>' +
+          '<button class="btn-danger" data-act="remove" data-id="'+u.discordId+'">'+ICONS.remove+'Remove</button></div>';
       }
       el.innerHTML = html;
       accountsList.appendChild(el);
@@ -608,6 +645,7 @@
       const res = await fetch('/api/session');
       currentSession = await res.json();
     } catch (e) { /* stay logged out */ }
+    renderTopNav();
     renderLogControls();
     if (currentSession.isGod) tabAccounts.hidden = false;
     loadLog();
