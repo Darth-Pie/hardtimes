@@ -1,14 +1,35 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "hardtimes",
+  "main": "src/worker.js",
   "compatibility_date": "2026-07-15",
   "observability": {
     "enabled": true
   },
   "assets": {
-    "directory": "."
+    "directory": ".",
+    "binding": "ASSETS",
+    "run_worker_first": true
   },
   "compatibility_flags": [
     "nodejs_compat"
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "HARDTIMES_LOG",
+      "id": "391f47e389fc40b98d35819bef71c511"
+    }
+  ],
+  "secrets_store_secrets": [
+    {
+      "binding": "AUTH_SECRET",
+      "store_id": "66787472c7c24607b228c9cef06da89d",
+      "secret_name": "hardtimes-auth-secret"
+    },
+    {
+      "binding": "DISCORD_CLIENT_SECRET",
+      "store_id": "66787472c7c24607b228c9cef06da89d",
+      "secret_name": "hardtimes-discord-client-secret"
+    }
   ]
 }

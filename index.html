@@ -312,17 +312,10 @@
 
 <script>
   /* =========================================================================
-     UPDATE OFTEN: this is the "what's happening now" feed. Prepend a new
-     object (newest first) each time there's news — session recap, a teaser
-     for what's next, an in-world transmission, whatever fits the campaign.
-       date:   short display string, e.g. "Session 4 · 2026-07-12"
-       status: a short tag, e.g. "RECAP", "TEASER", "SIDE QUEST"
-       title / body: the actual update
+     Facility Log entries now live in KV, managed at /warden/console (Discord-
+     gated). This just fetches whatever's current -- no redeploy needed to
+     post an update after a session.
      ========================================================================= */
-  const updates = [
-    { date: 'Session 0', status: 'INTAKE', title: 'Orientation Complete',
-      body: 'Six new case files logged, six new faces added to The Rock\'s population. Session One is loading — check back soon for the first word from inside.' }
-  ];
 
   /* =========================================================================
      ADD A CHARACTER: append an object to this array.
@@ -373,14 +366,16 @@
   ];
 
   const logList = document.getElementById('logList');
-  updates.forEach(u => {
-    const el = document.createElement('div');
-    el.className = 'log-entry';
-    el.innerHTML =
-      '<div class="meta"><span class="date">'+u.date+'</span><span class="status">'+u.status+'</span></div>' +
-      '<h3>'+u.title+'</h3><p>'+u.body+'</p>';
-    logList.appendChild(el);
-  });
+  fetch('/api/log').then(r => r.json()).then(updates => {
+    updates.forEach(u => {
+      const el = document.createElement('div');
+      el.className = 'log-entry';
+      el.innerHTML =
+        '<div class="meta"><span class="date">'+u.date+'</span><span class="status">'+u.status+'</span></div>' +
+        '<h3>'+u.title+'</h3><p>'+u.body+'</p>';
+      logList.appendChild(el);
+    });
+  }).catch(() => {});
 
   function blurbHTML(blurb){
     return blurb.map(p => typeof p === 'object'

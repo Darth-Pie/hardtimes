@@ -2,6 +2,8 @@
 .git/**
 .wrangler
 .wrangler/**
+src
+src/**
 wrangler.jsonc
 desktop.ini
 **/desktop.ini
