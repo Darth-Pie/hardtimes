@@ -118,7 +118,7 @@
   .top-nav a, .top-nav .log-status{ display:inline-flex; align-items:center; gap:7px; white-space:nowrap;
     font-family:'Share Tech Mono',monospace; font-size:11px; letter-spacing:0.1em; text-transform:uppercase;
     color:var(--amber); opacity:0.85; text-decoration:none; transition:opacity 0.2s ease, color 0.2s ease; }
-  .top-nav a:hover{ opacity:1; }
+  .top-nav a:hover{ opacity:1; text-decoration:underline; }
   .top-nav svg{ flex-shrink:0; width:13px; height:13px; }
   .top-nav .log-status{ color:var(--text-dim); opacity:0.8; }
 
@@ -128,13 +128,12 @@
   .log-link, .log-admin-actions button, .acct-actions button{
     display:inline-flex; align-items:center; gap:6px;
     font-family:'Share Tech Mono',monospace; font-size:12px; letter-spacing:0.06em;
-    text-transform:uppercase; color:var(--amber); background:none; border:1px solid rgba(255,176,32,0.4);
-    border-radius:4px; padding:6px 12px; cursor:pointer; text-decoration:none; }
-  .log-link:hover, .log-admin-actions button:hover, .acct-actions button:hover{ background:rgba(255,176,32,0.1); }
+    text-transform:uppercase; color:var(--amber); background:none; border:none;
+    padding:6px 2px; cursor:pointer; text-decoration:none; }
+  .log-link:hover, .log-admin-actions button:hover, .acct-actions button:hover{ text-decoration:underline; }
   .log-link svg, .log-admin-actions button svg, .acct-actions button svg{ flex-shrink:0; width:13px; height:13px; }
-  .log-admin-actions{ display:flex; gap:8px; margin-top:12px; }
-  .log-admin-actions .btn-danger, .acct-actions .btn-danger{ color:#e08a8a; border-color:rgba(220,80,80,0.5); }
-  .log-admin-actions .btn-danger:hover, .acct-actions .btn-danger:hover{ background:rgba(220,80,80,0.12); }
+  .log-admin-actions{ display:flex; gap:14px; margin-top:12px; }
+  .log-admin-actions .btn-danger, .acct-actions .btn-danger{ color:#e08a8a; }
 
   .entry-form{ background:var(--panel); border:1px solid rgba(255,176,32,0.25); border-radius:6px;
     padding:20px 24px; margin:0 0 18px; }
@@ -153,7 +152,8 @@
     background:var(--amber); color:#1a1305; }
   .entry-form-actions button svg{ flex-shrink:0; width:14px; height:14px; }
   .entry-form-actions button:hover{ filter:brightness(1.08); }
-  .entry-form-actions .btn-ghost{ background:none; border:1px solid var(--steel-lt); color:var(--text-dim); }
+  .entry-form-actions .btn-ghost{ background:none; border:none; color:var(--text-dim); padding-left:2px; padding-right:2px; }
+  .entry-form-actions .btn-ghost:hover{ filter:none; text-decoration:underline; }
   .entry-form-msg{ font-family:'Share Tech Mono',monospace; font-size:12px; color:#e08a8a; margin:12px 0 0; }
 
   /* ---- accounts tab ---- */
@@ -163,7 +163,7 @@
   .acct-row.blocked{ background:rgba(220,80,80,0.06); }
   .acct-name{ font-family:'Oswald',sans-serif; font-size:15px; color:var(--text); margin:0 0 4px; }
   .acct-meta{ font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--text-dim); margin:0; }
-  .acct-actions{ display:flex; gap:8px; flex-shrink:0; }
+  .acct-actions{ display:flex; gap:14px; flex-shrink:0; }
 
   /* ---- synopsis ---- */
   .synopsis p{ font-size:17px; color:var(--text); margin:0 0 18px; }
