@@ -18,6 +18,10 @@
     {
       "binding": "HARDTIMES_LOG",
       "id": "391f47e389fc40b98d35819bef71c511"
+    },
+    {
+      "binding": "HARDTIMES_USERS",
+      "id": "2e609e73ed7d46668fe40a3188d4f13f"
     }
   ],
   "secrets_store_secrets": [

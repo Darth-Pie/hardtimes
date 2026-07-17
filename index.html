@@ -100,12 +100,54 @@
   .log{ background:var(--panel); border:1px solid rgba(255,176,32,0.15); border-radius:6px; padding:6px 0; }
   .log-entry{ padding:20px 26px; border-bottom:1px solid rgba(74,85,104,0.28); }
   .log-entry:last-child{ border-bottom:none; }
+  .log-entry.pending{ background:rgba(255,176,32,0.08); border-left:3px solid var(--amber); padding-left:23px; }
   .log-entry .meta{ display:flex; align-items:center; gap:10px; margin:0 0 8px; }
   .log-entry .date{ font-family:'Share Tech Mono',monospace; font-size:12px; color:var(--amber); }
   .log-entry .status{ font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:0.1em;
     text-transform:uppercase; color:var(--text-dim); padding:2px 8px; border:1px solid var(--steel-lt); border-radius:3px; }
+  .log-entry .pending-tag{ font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:0.1em;
+    text-transform:uppercase; color:var(--amber); }
   .log-entry h3{ font-family:'Oswald',sans-serif; font-weight:500; font-size:18px; margin:0 0 6px; color:var(--text); }
   .log-entry p{ margin:0; color:var(--text-dim); font-size:15.5px; }
+  .log-entry .author{ font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--text-dim); opacity:0.7; margin-top:8px; }
+
+  /* ---- facility log controls: login/logout, add-entry, admin actions ---- */
+  .log-controls{ display:flex; align-items:center; flex-wrap:wrap; gap:14px; margin:0 0 18px; }
+  .log-link, .log-admin-actions button{ font-family:'Share Tech Mono',monospace; font-size:12px; letter-spacing:0.06em;
+    text-transform:uppercase; color:var(--amber); background:none; border:1px solid rgba(255,176,32,0.4);
+    border-radius:4px; padding:6px 12px; cursor:pointer; text-decoration:none; display:inline-block; }
+  .log-link:hover, .log-admin-actions button:hover{ background:rgba(255,176,32,0.1); }
+  .log-status{ font-family:'Share Tech Mono',monospace; font-size:12px; color:var(--text-dim); }
+  .log-admin-actions{ display:flex; gap:8px; margin-top:12px; }
+  .log-admin-actions .btn-danger{ color:#e08a8a; border-color:rgba(220,80,80,0.5); }
+  .log-admin-actions .btn-danger:hover{ background:rgba(220,80,80,0.12); }
+
+  .entry-form{ background:var(--panel); border:1px solid rgba(255,176,32,0.25); border-radius:6px;
+    padding:20px 24px; margin:0 0 18px; }
+  .entry-form label{ display:block; font-family:'Share Tech Mono',monospace; font-size:11px; letter-spacing:0.08em;
+    text-transform:uppercase; color:var(--text-dim); margin:12px 0 6px; }
+  .entry-form label:first-child{ margin-top:0; }
+  .entry-form input[type=text], .entry-form textarea{ width:100%; background:var(--void);
+    border:1px solid var(--steel-lt); border-radius:4px; color:var(--text); font-family:'Barlow',sans-serif;
+    font-size:15px; padding:9px 11px; }
+  .entry-form textarea{ min-height:90px; resize:vertical; }
+  .entry-form input[type=text]:focus, .entry-form textarea:focus{ outline:none; border-color:var(--amber); }
+  .entry-form-actions{ display:flex; gap:10px; margin-top:16px; }
+  .entry-form-actions button{ font-family:'Oswald',sans-serif; font-weight:600; font-size:13px; letter-spacing:0.06em;
+    text-transform:uppercase; padding:9px 16px; border-radius:4px; border:none; cursor:pointer;
+    background:var(--amber); color:#1a1305; }
+  .entry-form-actions button:hover{ filter:brightness(1.08); }
+  .entry-form-actions .btn-ghost{ background:none; border:1px solid var(--steel-lt); color:var(--text-dim); }
+  .entry-form-msg{ font-family:'Share Tech Mono',monospace; font-size:12px; color:#e08a8a; margin:12px 0 0; }
+
+  /* ---- accounts tab ---- */
+  .acct-row{ padding:16px 26px; border-bottom:1px solid rgba(74,85,104,0.28); display:flex;
+    justify-content:space-between; align-items:flex-start; gap:14px; }
+  .acct-row:last-child{ border-bottom:none; }
+  .acct-row.blocked{ background:rgba(220,80,80,0.06); }
+  .acct-name{ font-family:'Oswald',sans-serif; font-size:15px; color:var(--text); margin:0 0 4px; }
+  .acct-meta{ font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--text-dim); margin:0; }
+  .acct-actions{ display:flex; gap:8px; flex-shrink:0; }
 
   /* ---- synopsis ---- */
   .synopsis p{ font-size:17px; color:var(--text); margin:0 0 18px; }
@@ -246,6 +288,9 @@
       <button class="tab-btn" role="tab" aria-selected="false" aria-controls="panel-crew" id="tab-crew" data-target="panel-crew">
         <span class="tab-num">03</span><span class="tab-label">Intake Records</span>
       </button>
+      <button class="tab-btn" role="tab" aria-selected="false" aria-controls="panel-accounts" id="tab-accounts" data-target="panel-accounts" hidden>
+        <span class="tab-num">04</span><span class="tab-label">Accounts</span>
+      </button>
     </div>
 
     <div class="tab-panel active" id="panel-log" role="tabpanel" aria-labelledby="tab-log">
@@ -253,6 +298,22 @@
         <span class="tag">// FACILITY LOG</span>
         <h2>What's Happening Now</h2>
         <span class="rule"></span>
+      </div>
+      <div class="log-controls" id="logControls"></div>
+      <div class="entry-form" id="entryForm" hidden>
+        <label for="ef-date">Date label</label>
+        <input type="text" id="ef-date" placeholder="Session 4 &middot; 2026-07-20">
+        <label for="ef-status">Status tag</label>
+        <input type="text" id="ef-status" placeholder="RECAP / TEASER / SIDE QUEST">
+        <label for="ef-title">Title</label>
+        <input type="text" id="ef-title">
+        <label for="ef-body">Body</label>
+        <textarea id="ef-body"></textarea>
+        <div class="entry-form-actions">
+          <button type="button" id="entryFormSubmit">Post</button>
+          <button type="button" id="entryFormCancel" class="btn-ghost">Cancel</button>
+        </div>
+        <p class="entry-form-msg" id="entryFormMsg"></p>
       </div>
       <div class="log" id="logList"></div>
     </div>
@@ -286,6 +347,15 @@
       </div>
       <div class="crew-grid" id="crewGrid"></div>
     </div>
+
+    <div class="tab-panel" id="panel-accounts" role="tabpanel" aria-labelledby="tab-accounts" hidden>
+      <div class="sec-head">
+        <span class="tag">// ACCOUNTS</span>
+        <h2>Discord Logins</h2>
+        <span class="rule"></span>
+      </div>
+      <div class="log" id="accountsList"></div>
+    </div>
   </section>
 
   <footer><a href="https://919gaming.com/">&larr; Back to 919 Gaming</a></footer>
@@ -312,9 +382,9 @@
 
 <script>
   /* =========================================================================
-     Facility Log entries now live in KV, managed at /warden/console (Discord-
-     gated). This just fetches whatever's current -- no redeploy needed to
-     post an update after a session.
+     Facility Log entries live in KV, managed inline in this tab (see the
+     Facility Log section at the bottom of this script). No redeploy needed
+     to post an update after a session -- see /warden for the login.
      ========================================================================= */
 
   /* =========================================================================
@@ -365,17 +435,184 @@
     ] }
   ];
 
+  /* =========================================================================
+     Facility Log: session-aware rendering (Warden login/logout, add-entry
+     form, and God-only approve/edit/delete + the Accounts tab). Entries are
+     fetched fresh from /api/log every load -- see src/worker.js.
+     ========================================================================= */
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  let currentSession = { loggedIn: false, isGod: false, isContributor: false };
+  let lastLogEntries = [];
+  let editingEntryId = null; // null while the form is in "add" mode
+
   const logList = document.getElementById('logList');
-  fetch('/api/log').then(r => r.json()).then(updates => {
-    updates.forEach(u => {
+  const logControls = document.getElementById('logControls');
+  const entryForm = document.getElementById('entryForm');
+  const efDate = document.getElementById('ef-date');
+  const efStatus = document.getElementById('ef-status');
+  const efTitle = document.getElementById('ef-title');
+  const efBody = document.getElementById('ef-body');
+  const entryFormMsg = document.getElementById('entryFormMsg');
+  const tabAccounts = document.getElementById('tab-accounts');
+  const accountsList = document.getElementById('accountsList');
+
+  function renderLogControls(){
+    const parts = [];
+    if (currentSession.loggedIn){
+      parts.push('<span class="log-status">Logged in as ' + escapeHtml(currentSession.username) + '</span>');
+      parts.push('<a class="log-link" href="/warden/logout">Log out</a>');
+      if (currentSession.isGod || currentSession.isContributor){
+        parts.push('<button type="button" class="log-link" id="addEntryBtn">+ Add Entry</button>');
+      }
+    } else {
+      parts.push('<a class="log-link" href="/warden">Warden Login</a>');
+    }
+    logControls.innerHTML = parts.join('');
+    const addBtn = document.getElementById('addEntryBtn');
+    if (addBtn) addBtn.addEventListener('click', () => openEntryForm(null));
+  }
+
+  function openEntryForm(entry){
+    editingEntryId = entry ? entry.id : null;
+    efDate.value = entry ? entry.date : '';
+    efStatus.value = entry ? entry.status : '';
+    efTitle.value = entry ? entry.title : '';
+    efBody.value = entry ? entry.body : '';
+    entryFormMsg.textContent = '';
+    document.getElementById('entryFormSubmit').textContent = entry ? 'Save' : 'Post';
+    entryForm.hidden = false;
+    efDate.focus();
+  }
+  function closeEntryForm(){
+    entryForm.hidden = true;
+    editingEntryId = null;
+  }
+  document.getElementById('entryFormCancel').addEventListener('click', closeEntryForm);
+  document.getElementById('entryFormSubmit').addEventListener('click', async () => {
+    const payload = { date: efDate.value.trim(), status: efStatus.value.trim(), title: efTitle.value.trim(), body: efBody.value.trim() };
+    if (!payload.date || !payload.status || !payload.title || !payload.body){
+      entryFormMsg.textContent = 'All fields are required.';
+      return;
+    }
+    const url = editingEntryId ? '/api/log/edit' : '/api/log';
+    if (editingEntryId) payload.id = editingEntryId;
+    const res = await fetch(url, { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify(payload) });
+    const data = await res.json().catch(() => ({ ok: false }));
+    if (!data.ok){
+      entryFormMsg.textContent = data.error || 'Something went wrong.';
+      return;
+    }
+    closeEntryForm();
+    loadLog();
+  });
+
+  async function logAction(url, id){
+    const res = await fetch(url, { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ id }) });
+    const data = await res.json().catch(() => ({ ok: false }));
+    if (data.ok) loadLog();
+  }
+
+  function renderLog(entries){
+    logList.innerHTML = '';
+    if (!entries.length){
+      logList.innerHTML = '<div class="log-entry"><p>Nothing logged yet.</p></div>';
+      return;
+    }
+    entries.forEach(u => {
       const el = document.createElement('div');
-      el.className = 'log-entry';
-      el.innerHTML =
-        '<div class="meta"><span class="date">'+u.date+'</span><span class="status">'+u.status+'</span></div>' +
+      el.className = 'log-entry' + (u.approved === false ? ' pending' : '');
+      let html =
+        '<div class="meta"><span class="date">'+u.date+'</span><span class="status">'+u.status+'</span>' +
+        (u.approved === false ? '<span class="pending-tag">AWAITING APPROVAL</span>' : '') +
+        '</div>' +
         '<h3>'+u.title+'</h3><p>'+u.body+'</p>';
+      if (currentSession.isGod){
+        if (u.authorName) html += '<p class="author">Submitted by '+escapeHtml(u.authorName)+'</p>';
+        html += '<div class="log-admin-actions">';
+        if (u.approved === false){
+          html += '<button data-act="approve" data-id="'+u.id+'">Approve</button>';
+          html += '<button class="btn-danger" data-act="delete" data-id="'+u.id+'">Reject</button>';
+        } else {
+          html += '<button data-act="edit" data-id="'+u.id+'">Edit</button>';
+          html += '<button class="btn-danger" data-act="delete" data-id="'+u.id+'">Delete</button>';
+        }
+        html += '</div>';
+      }
+      el.innerHTML = html;
       logList.appendChild(el);
     });
-  }).catch(() => {});
+
+    if (currentSession.isGod){
+      logList.querySelectorAll('button[data-act]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.dataset.id;
+          const act = btn.dataset.act;
+          if (act === 'approve') logAction('/api/log/approve', id);
+          else if (act === 'delete') { if (confirm('Remove this entry?')) logAction('/api/log/delete', id); }
+          else if (act === 'edit') {
+            const entry = lastLogEntries.find(e => e.id === id);
+            if (entry) openEntryForm(entry);
+          }
+        });
+      });
+    }
+  }
+
+  async function loadLog(){
+    const res = await fetch('/api/log');
+    const entries = await res.json();
+    lastLogEntries = entries;
+    renderLog(entries);
+  }
+
+  async function renderAccounts(){
+    if (!currentSession.isGod) return;
+    const res = await fetch('/api/users');
+    const users = await res.json().catch(() => []);
+    if (!Array.isArray(users)) return;
+    accountsList.innerHTML = users.length ? '' : '<div class="acct-row"><p>No logins yet.</p></div>';
+    users.forEach(u => {
+      const el = document.createElement('div');
+      el.className = 'acct-row' + (u.blocked ? ' blocked' : '');
+      let html =
+        '<div><p class="acct-name">'+escapeHtml(u.username)+' <span class="pending-tag">'+u.role.toUpperCase()+(u.blocked ? ' &middot; BLOCKED' : '')+'</span></p>' +
+        '<p class="acct-meta">ID '+escapeHtml(u.discordId)+' &middot; first login '+new Date(u.firstLogin).toLocaleDateString()+' &middot; last login '+new Date(u.lastLogin).toLocaleDateString()+'</p></div>';
+      if (u.role !== 'god'){
+        html += '<div class="acct-actions">' +
+          '<button data-act="'+(u.blocked ? 'unblock' : 'block')+'" data-id="'+u.discordId+'">'+(u.blocked ? 'Unblock' : 'Block')+'</button>' +
+          '<button class="btn-danger" data-act="remove" data-id="'+u.discordId+'">Remove</button></div>';
+      }
+      el.innerHTML = html;
+      accountsList.appendChild(el);
+    });
+    accountsList.querySelectorAll('button[data-act]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        const act = btn.dataset.act;
+        if (act === 'remove'){
+          if (!confirm('Remove this account? They can log back in later if they still hold the role.')) return;
+          await fetch('/api/users/remove', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ discordId: id }) });
+        } else {
+          await fetch('/api/users/block', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ discordId: id, blocked: act === 'block' }) });
+        }
+        renderAccounts();
+      });
+    });
+  }
+
+  (async function initFacilityLog(){
+    try {
+      const res = await fetch('/api/session');
+      currentSession = await res.json();
+    } catch (e) { /* stay logged out */ }
+    renderLogControls();
+    if (currentSession.isGod) tabAccounts.hidden = false;
+    loadLog();
+    if (currentSession.isGod) renderAccounts();
+  })();
 
   function blurbHTML(blurb){
     return blurb.map(p => typeof p === 'object'

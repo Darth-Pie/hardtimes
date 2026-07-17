@@ -1,21 +1,30 @@
-// "The Warden" — Discord OAuth login gate for the Facility Log admin console.
-// Single-owner gate: no guild/role lookup, just checks that the logged-in
-// Discord account matches OWNER_DISCORD_ID. Lets the DM post a new Facility
-// Log entry after each session without a git commit + wrangler deploy --
-// entries live in HARDTIMES_LOG KV and /api/log serves them to index.html.
+// "The Warden" — Discord login gate for the Facility Log.
+// Two tiers, no dashboard-configurable roles (unlike 919gaming's):
+//   - God (hardcoded OWNER_DISCORD_ID): full control, can post entries that
+//     go live immediately, edit/delete any entry, approve/reject pending
+//     submissions, and manage (block/remove) logged-in accounts.
+//   - Contributor (anyone holding CONTRIBUTOR_ROLE_ID in GUILD_ID): can log
+//     in and submit new entries, which land as "pending" until God approves
+//     them. Contributors cannot edit or delete anything, including their own
+//     submissions, once posted.
+// Session cookie carries only identity (id/username) -- role/blocked status
+// is looked up fresh from HARDTIMES_USERS on every request, so a block takes
+// effect immediately rather than waiting for the session to expire.
 
 const SITE_URL = 'https://hardtimes.919gaming.com/';
 const COOKIE_NAME = 'warden_auth';
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 14; // 14 days
 const STATE_COOKIE_NAME = 'warden_oauth_state';
 const STATE_COOKIE_PATH = '/warden';
-const CONSOLE_PATH = '/warden/console';
 const CALLBACK_PATH = '/warden/callback';
 const REDIRECT_URI = 'https://hardtimes.919gaming.com' + CALLBACK_PATH;
 
 const DISCORD_CLIENT_ID = '1527701783219142707';
 const OWNER_DISCORD_ID = '161833822307090432';
+const GUILD_ID = '223208136780152832';
+const CONTRIBUTOR_ROLE_ID = '1516570040579657898';
 const LOG_KV_KEY = 'log';
+const USER_KEY_PREFIX = 'user:';
 
 function b64urlEncode(buf) {
   let bin = '';
@@ -63,6 +72,19 @@ function getCookie(request, name) {
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+async function readJson(request) {
+  try {
+    return await request.json();
+  } catch (e) {
+    return null;
+  }
+}
+function json(data, status) {
+  return new Response(JSON.stringify(data), {
+    status: status || 200,
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }
+  });
+}
 
 async function getSession(request, env) {
   const authSecret = await env.AUTH_SECRET.get();
@@ -70,128 +92,93 @@ async function getSession(request, env) {
   if (!session || !session.id) return { loggedIn: false, discordId: null, username: null };
   return { loggedIn: true, discordId: session.id, username: session.username };
 }
-function isOwner(session) {
-  return session.loggedIn && session.discordId === OWNER_DISCORD_ID;
+
+async function getUserRecord(env, discordId) {
+  const stored = await env.HARDTIMES_USERS.get(USER_KEY_PREFIX + discordId);
+  return stored ? JSON.parse(stored) : null;
+}
+async function upsertUserRecord(env, { discordId, username, role }) {
+  const existing = await getUserRecord(env, discordId);
+  const now = Date.now();
+  const record = {
+    discordId,
+    username,
+    role,
+    blocked: existing ? !!existing.blocked : false,
+    firstLogin: existing ? existing.firstLogin : now,
+    lastLogin: now
+  };
+  await env.HARDTIMES_USERS.put(USER_KEY_PREFIX + discordId, JSON.stringify(record));
+  return record;
+}
+async function listUsers(env) {
+  const { keys } = await env.HARDTIMES_USERS.list({ prefix: USER_KEY_PREFIX });
+  const users = [];
+  for (const k of keys) {
+    const stored = await env.HARDTIMES_USERS.get(k.name);
+    if (stored) users.push(JSON.parse(stored));
+  }
+  users.sort((a, b) => b.lastLogin - a.lastLogin);
+  return users;
 }
 
+// Live permission check (not baked into the session cookie) so a block
+// takes effect on the very next request rather than waiting for re-login.
+async function getPermissions(request, env) {
+  const session = await getSession(request, env);
+  if (!session.loggedIn) {
+    return { loggedIn: false, discordId: null, username: null, isGod: false, isContributor: false };
+  }
+  if (session.discordId === OWNER_DISCORD_ID) {
+    return { loggedIn: true, discordId: session.discordId, username: session.username, isGod: true, isContributor: false };
+  }
+  const record = await getUserRecord(env, session.discordId);
+  const isContributor = !!record && record.role === 'contributor' && !record.blocked;
+  return { loggedIn: true, discordId: session.discordId, username: session.username, isGod: false, isContributor };
+}
+
+function normalizeEntry(e, i) {
+  return {
+    id: e.id || ('legacy-' + i),
+    date: e.date, status: e.status, title: e.title, body: e.body,
+    approved: e.approved !== undefined ? e.approved : true,
+    authorId: e.authorId || null,
+    authorName: e.authorName || null
+  };
+}
 const DEFAULT_LOG = [
   { date: 'Session 0', status: 'INTAKE', title: 'Orientation Complete',
     body: 'Six new case files logged, six new faces added to The Rock\'s population. Session One is loading — check back soon for the first word from inside.' }
 ];
-
 async function getLogEntries(env) {
   const stored = await env.HARDTIMES_LOG.get(LOG_KV_KEY);
-  if (!stored) return DEFAULT_LOG;
-  try {
-    return JSON.parse(stored);
-  } catch (e) {
-    return DEFAULT_LOG;
+  let entries;
+  if (!stored) {
+    entries = DEFAULT_LOG;
+  } else {
+    try { entries = JSON.parse(stored); } catch (e) { entries = DEFAULT_LOG; }
   }
+  return entries.map(normalizeEntry);
 }
 async function saveLogEntries(env, entries) {
   await env.HARDTIMES_LOG.put(LOG_KV_KEY, JSON.stringify(entries));
 }
 
-function page(title, bodyHtml) {
+function errorPage(title, message) {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${title}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil:wght@600;800&family=Oswald:wght@400;500;600;700&family=Barlow:wght@400;500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<title>${escapeHtml(title)}</title>
 <style>
-  :root{ --void:#05060a; --panel:#12151f; --steel:#232733; --steel-lt:#4a5568;
-    --amber:#ffb020; --amber-dim:#b9791a; --text:#d8dbe2; --text-dim:#8890a0; }
-  *{ box-sizing:border-box; }
-  body{ margin:0; min-height:100vh; background:var(--void); color:var(--text);
-    font-family:'Barlow',sans-serif; line-height:1.6; padding:40px 20px; }
-  .wrap{ max-width:640px; margin:0 auto; }
-  h1{ font-family:'Big Shoulders Stencil',sans-serif; font-weight:800; font-size:36px; margin:0 0 4px; color:var(--text); }
-  p.sub{ font-family:'Share Tech Mono',monospace; font-size:12px; letter-spacing:0.16em; text-transform:uppercase;
-    color:var(--amber-dim); margin:0 0 30px; }
-  .panel{ background:var(--panel); border:1px solid rgba(255,176,32,0.18); border-radius:6px; padding:26px 28px; margin-bottom:22px; }
-  .panel h2{ font-family:'Oswald',sans-serif; font-weight:600; font-size:16px; letter-spacing:0.06em;
-    text-transform:uppercase; color:var(--amber); margin:0 0 16px; }
-  label{ display:block; font-family:'Share Tech Mono',monospace; font-size:11px; letter-spacing:0.08em;
-    text-transform:uppercase; color:var(--text-dim); margin:14px 0 6px; }
-  label:first-child{ margin-top:0; }
-  input[type=text], textarea{ width:100%; background:var(--void); border:1px solid var(--steel-lt); border-radius:4px;
-    color:var(--text); font-family:'Barlow',sans-serif; font-size:15px; padding:10px 12px; }
-  textarea{ min-height:110px; resize:vertical; }
-  input[type=text]:focus, textarea:focus{ outline:none; border-color:var(--amber); }
-  button, .btn{ font-family:'Oswald',sans-serif; font-weight:600; font-size:13px; letter-spacing:0.06em;
-    text-transform:uppercase; padding:10px 18px; border-radius:4px; border:none; cursor:pointer;
-    background:var(--amber); color:#1a1305; margin-top:18px; }
-  button:hover, .btn:hover{ filter:brightness(1.08); }
-  .btn-danger{ background:none; border:1px solid rgba(220,80,80,0.5); color:#e08a8a; padding:6px 12px;
-    font-size:11px; margin:0; }
-  .btn-danger:hover{ background:rgba(220,80,80,0.12); filter:none; }
-  .entry{ padding:14px 0; border-bottom:1px solid rgba(74,85,104,0.3); display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
-  .entry:last-child{ border-bottom:none; }
-  .entry .meta{ font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--amber-dim); margin:0 0 4px; }
-  .entry h3{ font-family:'Oswald',sans-serif; font-size:15px; margin:0 0 4px; color:var(--text); }
-  .entry p{ font-size:13.5px; color:var(--text-dim); margin:0; }
-  .nav-row{ display:flex; justify-content:space-between; margin-top:26px; }
-  .nav-row a{ font-family:'Share Tech Mono',monospace; font-size:11px; letter-spacing:0.1em; text-transform:uppercase;
-    color:var(--text-dim); text-decoration:none; }
-  .nav-row a:hover{ color:var(--amber); }
-  .msg{ font-family:'Share Tech Mono',monospace; font-size:13px; color:var(--text-dim); margin:0 0 20px; }
-</style></head><body><div class="wrap">${bodyHtml}</div></body></html>`;
-}
-
-function errorPage(title, message) {
-  return page(title, `
-    <h1>${escapeHtml(title)}</h1>
-    <p class="msg">${escapeHtml(message)}</p>
-    <div class="nav-row"><a href="${SITE_URL}">&larr; Back to site</a></div>
-  `);
-}
-
-function consolePage(entries) {
-  const rows = entries.length
-    ? entries.map((e, i) => `
-      <div class="entry">
-        <div>
-          <p class="meta">${escapeHtml(e.date)} &middot; ${escapeHtml(e.status)}</p>
-          <h3>${escapeHtml(e.title)}</h3>
-          <p>${escapeHtml(e.body)}</p>
-        </div>
-        <form method="POST" action="${CONSOLE_PATH}/delete" onsubmit="return confirm('Delete this entry?')">
-          <input type="hidden" name="index" value="${i}">
-          <button type="submit" class="btn-danger">Delete</button>
-        </form>
-      </div>`).join('')
-    : '<p class="msg">No entries yet.</p>';
-
-  return page("Hard Times — Warden's Console", `
-    <h1>Warden's Console</h1>
-    <p class="sub">Facility Log admin</p>
-
-    <div class="panel">
-      <h2>Post New Entry</h2>
-      <form method="POST" action="${CONSOLE_PATH}">
-        <label for="date">Date label</label>
-        <input type="text" id="date" name="date" placeholder="Session 4 &middot; 2026-07-20" required>
-        <label for="status">Status tag</label>
-        <input type="text" id="status" name="status" placeholder="RECAP / TEASER / SIDE QUEST" required>
-        <label for="title">Title</label>
-        <input type="text" id="title" name="title" required>
-        <label for="body">Body</label>
-        <textarea id="body" name="body" required></textarea>
-        <button type="submit">Post to Facility Log</button>
-      </form>
-    </div>
-
-    <div class="panel">
-      <h2>Current Entries</h2>
-      ${rows}
-    </div>
-
-    <div class="nav-row">
-      <a href="${SITE_URL}">&larr; Back to site</a>
-      <a href="/warden/logout">Log out</a>
-    </div>
-  `);
+  body{ margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:#05060a; color:#d8dbe2; font-family:sans-serif; padding:24px; }
+  .box{ max-width:420px; text-align:center; }
+  h1{ color:#ffb020; font-size:22px; }
+  a{ color:#ffb020; }
+</style></head><body><div class="box">
+  <h1>${escapeHtml(title)}</h1>
+  <p>${escapeHtml(message)}</p>
+  <p><a href="${SITE_URL}">&larr; Back to site</a></p>
+</div></body></html>`;
 }
 
 const CSP = [
@@ -218,26 +205,126 @@ function withSecurityHeaders(response) {
 
 async function handleRequest(request, env, ctx) {
   const url = new URL(request.url);
-  const html = { 'content-type': 'text/html;charset=UTF-8', 'cache-control': 'no-store, private' };
+  const htmlHeaders = { 'content-type': 'text/html;charset=UTF-8', 'cache-control': 'no-store, private' };
 
-  if (url.pathname === '/api/log' && request.method === 'GET') {
-    const entries = await getLogEntries(env);
-    return new Response(JSON.stringify(entries), {
-      headers: { 'content-type': 'application/json', 'cache-control': 'no-store' }
-    });
+  // ---- session/status ----
+  if (url.pathname === '/api/session' && request.method === 'GET') {
+    const perms = await getPermissions(request, env);
+    return json({ loggedIn: perms.loggedIn, username: perms.username, isGod: perms.isGod, isContributor: perms.isContributor });
   }
 
+  // ---- facility log ----
+  if (url.pathname === '/api/log' && request.method === 'GET') {
+    const perms = await getPermissions(request, env);
+    const entries = await getLogEntries(env);
+    if (perms.isGod) return json(entries);
+    return json(entries.filter(e => e.approved).map(e => ({ id: e.id, date: e.date, status: e.status, title: e.title, body: e.body })));
+  }
+
+  if (url.pathname === '/api/log' && request.method === 'POST') {
+    const perms = await getPermissions(request, env);
+    if (!perms.isGod && !perms.isContributor) return json({ ok: false, error: 'Not authorized.' }, 403);
+    const body = await readJson(request);
+    if (!body) return json({ ok: false, error: 'Invalid request.' }, 400);
+    const date = (body.date || '').toString().trim();
+    const status = (body.status || '').toString().trim();
+    const title = (body.title || '').toString().trim();
+    const entryBody = (body.body || '').toString().trim();
+    if (!date || !status || !title || !entryBody) return json({ ok: false, error: 'All fields are required.' }, 400);
+    const entries = await getLogEntries(env);
+    entries.unshift({
+      id: crypto.randomUUID(),
+      date, status, title, body: entryBody,
+      approved: perms.isGod,
+      authorId: perms.discordId,
+      authorName: perms.username
+    });
+    await saveLogEntries(env, entries);
+    return json({ ok: true });
+  }
+
+  if (url.pathname === '/api/log/edit' && request.method === 'POST') {
+    const perms = await getPermissions(request, env);
+    if (!perms.isGod) return json({ ok: false, error: 'Not authorized.' }, 403);
+    const body = await readJson(request);
+    if (!body || !body.id) return json({ ok: false, error: 'Invalid request.' }, 400);
+    const entries = await getLogEntries(env);
+    const entry = entries.find(e => e.id === body.id);
+    if (!entry) return json({ ok: false, error: 'Entry not found.' }, 404);
+    entry.date = (body.date || entry.date).toString().trim();
+    entry.status = (body.status || entry.status).toString().trim();
+    entry.title = (body.title || entry.title).toString().trim();
+    entry.body = (body.body || entry.body).toString().trim();
+    await saveLogEntries(env, entries);
+    return json({ ok: true });
+  }
+
+  if (url.pathname === '/api/log/approve' && request.method === 'POST') {
+    const perms = await getPermissions(request, env);
+    if (!perms.isGod) return json({ ok: false, error: 'Not authorized.' }, 403);
+    const body = await readJson(request);
+    if (!body || !body.id) return json({ ok: false, error: 'Invalid request.' }, 400);
+    const entries = await getLogEntries(env);
+    const entry = entries.find(e => e.id === body.id);
+    if (!entry) return json({ ok: false, error: 'Entry not found.' }, 404);
+    entry.approved = true;
+    await saveLogEntries(env, entries);
+    return json({ ok: true });
+  }
+
+  if (url.pathname === '/api/log/delete' && request.method === 'POST') {
+    const perms = await getPermissions(request, env);
+    if (!perms.isGod) return json({ ok: false, error: 'Not authorized.' }, 403);
+    const body = await readJson(request);
+    if (!body || !body.id) return json({ ok: false, error: 'Invalid request.' }, 400);
+    const entries = await getLogEntries(env);
+    const next = entries.filter(e => e.id !== body.id);
+    await saveLogEntries(env, next);
+    return json({ ok: true });
+  }
+
+  // ---- accounts (God only) ----
+  if (url.pathname === '/api/users' && request.method === 'GET') {
+    const perms = await getPermissions(request, env);
+    if (!perms.isGod) return json({ ok: false, error: 'Not authorized.' }, 403);
+    return json(await listUsers(env));
+  }
+
+  if (url.pathname === '/api/users/block' && request.method === 'POST') {
+    const perms = await getPermissions(request, env);
+    if (!perms.isGod) return json({ ok: false, error: 'Not authorized.' }, 403);
+    const body = await readJson(request);
+    if (!body || !body.discordId) return json({ ok: false, error: 'Invalid request.' }, 400);
+    if (body.discordId === OWNER_DISCORD_ID) return json({ ok: false, error: 'Cannot block the God account.' }, 400);
+    const record = await getUserRecord(env, body.discordId);
+    if (!record) return json({ ok: false, error: 'Account not found.' }, 404);
+    record.blocked = !!body.blocked;
+    await env.HARDTIMES_USERS.put(USER_KEY_PREFIX + body.discordId, JSON.stringify(record));
+    return json({ ok: true });
+  }
+
+  if (url.pathname === '/api/users/remove' && request.method === 'POST') {
+    const perms = await getPermissions(request, env);
+    if (!perms.isGod) return json({ ok: false, error: 'Not authorized.' }, 403);
+    const body = await readJson(request);
+    if (!body || !body.discordId) return json({ ok: false, error: 'Invalid request.' }, 400);
+    if (body.discordId === OWNER_DISCORD_ID) return json({ ok: false, error: 'Cannot remove the God account.' }, 400);
+    await env.HARDTIMES_USERS.delete(USER_KEY_PREFIX + body.discordId);
+    return json({ ok: true });
+  }
+
+  // ---- Discord OAuth ----
   if (url.pathname === '/warden' && request.method === 'GET') {
-    const existingSession = await getSession(request, env);
-    if (isOwner(existingSession)) {
-      return Response.redirect(url.origin + CONSOLE_PATH, 302);
+    const existing = await getPermissions(request, env);
+    if (existing.loggedIn) {
+      return Response.redirect(SITE_URL, 302);
     }
     const state = crypto.randomUUID();
     const authorizeUrl = new URL('https://discord.com/api/oauth2/authorize');
     authorizeUrl.searchParams.set('client_id', DISCORD_CLIENT_ID);
     authorizeUrl.searchParams.set('redirect_uri', REDIRECT_URI);
     authorizeUrl.searchParams.set('response_type', 'code');
-    authorizeUrl.searchParams.set('scope', 'identify');
+    authorizeUrl.searchParams.set('scope', 'identify guilds.members.read');
     authorizeUrl.searchParams.set('state', state);
     const headers = new Headers({ Location: authorizeUrl.toString(), 'Cache-Control': 'no-store, private' });
     headers.append('Set-Cookie', `${STATE_COOKIE_NAME}=${state}; Path=${STATE_COOKIE_PATH}; Max-Age=300; HttpOnly; Secure; SameSite=Lax`);
@@ -251,7 +338,7 @@ async function handleRequest(request, env, ctx) {
     const clearState = `${STATE_COOKIE_NAME}=; Path=${STATE_COOKIE_PATH}; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
 
     if (!code || !state || !savedState || state !== savedState) {
-      const headers = new Headers(html);
+      const headers = new Headers(htmlHeaders);
       headers.append('Set-Cookie', clearState);
       return new Response(errorPage('Login Failed', 'That login link expired or was invalid. Please try again.'), { status: 400, headers });
     }
@@ -269,7 +356,7 @@ async function handleRequest(request, env, ctx) {
       })
     });
     if (!tokenRes.ok) {
-      const headers = new Headers(html);
+      const headers = new Headers(htmlHeaders);
       headers.append('Set-Cookie', clearState);
       return new Response(errorPage('Login Failed', 'Discord rejected that login attempt.'), { status: 401, headers });
     }
@@ -279,17 +366,40 @@ async function handleRequest(request, env, ctx) {
       headers: { Authorization: `Bearer ${access_token}` }
     });
     const user = await userRes.json();
+    const isGod = user.id === OWNER_DISCORD_ID;
 
-    if (user.id !== OWNER_DISCORD_ID) {
-      const headers = new Headers(html);
+    const existingRecord = await getUserRecord(env, user.id);
+    if (existingRecord && existingRecord.blocked) {
+      const headers = new Headers(htmlHeaders);
       headers.append('Set-Cookie', clearState);
-      return new Response(errorPage('Access Denied', 'This Discord account is not authorized for the Warden console.'), { status: 403, headers });
+      return new Response(errorPage('Access Denied', 'This account has been blocked from the Warden console.'), { status: 403, headers });
+    }
+
+    if (!isGod) {
+      const memberRes = await fetch(`https://discord.com/api/v10/users/@me/guilds/${GUILD_ID}/member`, {
+        headers: { Authorization: `Bearer ${access_token}` }
+      });
+      if (!memberRes.ok) {
+        const headers = new Headers(htmlHeaders);
+        headers.append('Set-Cookie', clearState);
+        return new Response(errorPage('Not a Member', 'You must be a member of the required Discord server to log in.'), { status: 403, headers });
+      }
+      const member = await memberRes.json();
+      const roles = member.roles || [];
+      if (!roles.includes(CONTRIBUTOR_ROLE_ID)) {
+        const headers = new Headers(htmlHeaders);
+        headers.append('Set-Cookie', clearState);
+        return new Response(errorPage('Access Denied', "You don't have the role required to log in here."), { status: 403, headers });
+      }
+      await upsertUserRecord(env, { discordId: user.id, username: user.username, role: 'contributor' });
+    } else {
+      await upsertUserRecord(env, { discordId: user.id, username: user.username, role: 'god' });
     }
 
     const exp = Math.floor(Date.now() / 1000) + COOKIE_MAX_AGE;
     const authSecret = await env.AUTH_SECRET.get();
     const token = await signToken({ id: user.id, username: user.username, exp }, authSecret);
-    const headers = new Headers({ Location: url.origin + CONSOLE_PATH, 'Cache-Control': 'no-store, private' });
+    const headers = new Headers({ Location: SITE_URL, 'Cache-Control': 'no-store, private' });
     headers.append('Set-Cookie', `${COOKIE_NAME}=${token}; Path=/; Max-Age=${COOKIE_MAX_AGE}; HttpOnly; Secure; SameSite=Lax`);
     headers.append('Set-Cookie', clearState);
     return new Response(null, { status: 302, headers });
@@ -299,49 +409,6 @@ async function handleRequest(request, env, ctx) {
     const headers = new Headers({ Location: SITE_URL, 'Cache-Control': 'no-store, private' });
     headers.append('Set-Cookie', `${COOKIE_NAME}=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax`);
     return new Response(null, { status: 302, headers });
-  }
-
-  if (url.pathname === CONSOLE_PATH && request.method === 'GET') {
-    const session = await getSession(request, env);
-    if (!isOwner(session)) {
-      return Response.redirect(url.origin + '/warden', 302);
-    }
-    const entries = await getLogEntries(env);
-    return new Response(consolePage(entries), { headers: html });
-  }
-
-  if (url.pathname === CONSOLE_PATH && request.method === 'POST') {
-    const session = await getSession(request, env);
-    if (!isOwner(session)) {
-      return Response.redirect(url.origin + '/warden', 302);
-    }
-    const form = await request.formData();
-    const date = (form.get('date') || '').toString().trim();
-    const status = (form.get('status') || '').toString().trim();
-    const title = (form.get('title') || '').toString().trim();
-    const body = (form.get('body') || '').toString().trim();
-    if (!date || !status || !title || !body) {
-      return Response.redirect(url.origin + CONSOLE_PATH, 302);
-    }
-    const entries = await getLogEntries(env);
-    entries.unshift({ date, status, title, body });
-    await saveLogEntries(env, entries);
-    return Response.redirect(url.origin + CONSOLE_PATH, 302);
-  }
-
-  if (url.pathname === CONSOLE_PATH + '/delete' && request.method === 'POST') {
-    const session = await getSession(request, env);
-    if (!isOwner(session)) {
-      return Response.redirect(url.origin + '/warden', 302);
-    }
-    const form = await request.formData();
-    const index = parseInt((form.get('index') || '').toString(), 10);
-    const entries = await getLogEntries(env);
-    if (Number.isInteger(index) && index >= 0 && index < entries.length) {
-      entries.splice(index, 1);
-      await saveLogEntries(env, entries);
-    }
-    return Response.redirect(url.origin + CONSOLE_PATH, 302);
   }
 
   return env.ASSETS.fetch(request);
