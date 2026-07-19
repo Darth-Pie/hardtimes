@@ -163,7 +163,15 @@
   .acct-row.blocked{ background:rgba(220,80,80,0.06); }
   .acct-name{ font-family:'Oswald',sans-serif; font-size:15px; color:var(--text); margin:0 0 4px; }
   .acct-meta{ font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--text-dim); margin:0; }
-  .acct-actions{ display:flex; gap:14px; flex-shrink:0; }
+  .acct-actions{ display:flex; gap:14px; flex-shrink:0; flex-wrap:wrap; justify-content:flex-end; align-items:center; }
+  .acct-select{ background:var(--void); border:1px solid rgba(74,85,104,0.5); color:var(--text);
+    font-family:'Share Tech Mono',monospace; font-size:12px; padding:6px 8px; border-radius:4px; }
+  .acct-select:focus{ outline:none; border-color:var(--amber); }
+  .audit-section{ margin-top:28px; padding-top:20px; border-top:1px solid rgba(74,85,104,0.28); }
+  .audit-section h3{ font-family:'Oswald',sans-serif; font-size:16px; color:var(--text); margin:0 0 10px; font-weight:600; }
+  .audit-row{ font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--text-dim);
+    padding:8px 26px; border-bottom:1px solid rgba(74,85,104,0.18); }
+  .audit-row.denied{ color:#e08a8a; }
 
   /* ---- synopsis ---- */
   .synopsis p{ font-size:17px; color:var(--text); margin:0 0 18px; }
@@ -373,6 +381,10 @@
         <span class="rule"></span>
       </div>
       <div class="log" id="accountsList"></div>
+      <div class="audit-section">
+        <h3>Recent Logins</h3>
+        <div id="auditList"></div>
+      </div>
     </div>
   </section>
 
@@ -461,6 +473,9 @@
   function escapeHtml(s){
     return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
+  function slugify(name){
+    return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  }
 
   /* Small stroke-style icons (feather-icons-inspired), one per action --
      sized/colored via CSS (fill/stroke: currentColor), not the markup. */
@@ -474,10 +489,12 @@
     delete: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>',
     block: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="5.5" y1="5.5" x2="18.5" y2="18.5"/></svg>',
     unblock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>',
-    remove: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="11" x2="23" y2="11"/></svg>'
+    remove: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="11" x2="23" y2="11"/></svg>',
+    shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6l-8-4Z"/></svg>',
+    revoke: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>'
   };
 
-  let currentSession = { loggedIn: false, isGod: false, isContributor: false };
+  let currentSession = { loggedIn: false, isGod: false, isModerator: false, isContributor: false, canManage: false, canSubmit: false, characterName: null };
   let lastLogEntries = [];
   let editingEntryId = null; // null while the form is in "add" mode
 
@@ -492,11 +509,13 @@
   const entryFormMsg = document.getElementById('entryFormMsg');
   const tabAccounts = document.getElementById('tab-accounts');
   const accountsList = document.getElementById('accountsList');
+  const auditList = document.getElementById('auditList');
 
   function renderTopNav(){
     const parts = [];
     if (currentSession.loggedIn){
-      parts.push('<span class="log-status">' + escapeHtml(currentSession.username) + '</span>');
+      const label = currentSession.characterName || currentSession.username;
+      parts.push('<span class="log-status">' + escapeHtml(label) + '</span>');
       parts.push('<a href="/warden/logout">' + ICONS.logout + 'Log out</a>');
     } else {
       parts.push('<a href="/warden">' + ICONS.login + 'Warden Login</a>');
@@ -505,7 +524,7 @@
   }
 
   function renderLogControls(){
-    logControls.innerHTML = (currentSession.isGod || currentSession.isContributor)
+    logControls.innerHTML = currentSession.canSubmit
       ? '<button type="button" class="log-link" id="addEntryBtn">' + ICONS.add + 'Add Entry</button>'
       : '';
     const addBtn = document.getElementById('addEntryBtn');
@@ -566,7 +585,7 @@
         (u.approved === false ? '<span class="pending-tag">AWAITING APPROVAL</span>' : '') +
         '</div>' +
         '<h3>'+u.title+'</h3><p>'+u.body+'</p>';
-      if (currentSession.isGod){
+      if (currentSession.canManage){
         if (u.authorName) html += '<p class="author">Submitted by '+escapeHtml(u.authorName)+'</p>';
         html += '<div class="log-admin-actions">';
         if (u.approved === false){
@@ -582,7 +601,7 @@
       logList.appendChild(el);
     });
 
-    if (currentSession.isGod){
+    if (currentSession.canManage){
       logList.querySelectorAll('button[data-act]').forEach(btn => {
         btn.addEventListener('click', () => {
           const id = btn.dataset.id;
@@ -605,25 +624,58 @@
     renderLog(entries);
   }
 
+  function characterSelectHTML(selectedSlug){
+    let html = '<option value="">— none —</option>';
+    characters.forEach(c => {
+      const slug = slugify(c.name);
+      html += '<option value="'+slug+'"'+(slug === selectedSlug ? ' selected' : '')+'>'+escapeHtml(c.name)+'</option>';
+    });
+    return html;
+  }
+
   async function renderAccounts(){
-    if (!currentSession.isGod) return;
+    if (!currentSession.canManage) return;
     const res = await fetch('/api/users');
     const users = await res.json().catch(() => []);
     if (!Array.isArray(users)) return;
     accountsList.innerHTML = users.length ? '' : '<div class="acct-row"><p>No logins yet.</p></div>';
     users.forEach(u => {
+      // A moderator can't act on God's account or another moderator's --
+      // only God can manage those, mirroring the server-side check.
+      const isProtected = u.role === 'god' || u.isModerator;
+      const canAct = currentSession.isGod || !isProtected;
       const el = document.createElement('div');
       el.className = 'acct-row' + (u.blocked ? ' blocked' : '');
+      const tags = [u.role.toUpperCase()];
+      if (u.isModerator) tags.push('MODERATOR');
+      if (u.blocked) tags.push('BLOCKED');
       let html =
-        '<div><p class="acct-name">'+escapeHtml(u.username)+' <span class="pending-tag">'+u.role.toUpperCase()+(u.blocked ? ' &middot; BLOCKED' : '')+'</span></p>' +
-        '<p class="acct-meta">ID '+escapeHtml(u.discordId)+' &middot; first login '+new Date(u.firstLogin).toLocaleDateString()+' &middot; last login '+new Date(u.lastLogin).toLocaleDateString()+'</p></div>';
-      if (u.role !== 'god'){
-        html += '<div class="acct-actions">' +
+        '<div><p class="acct-name">'+escapeHtml(u.username)+' <span class="pending-tag">'+tags.join(' &middot; ')+'</span></p>' +
+        '<p class="acct-meta">ID '+escapeHtml(u.discordId)+' &middot; first login '+new Date(u.firstLogin).toLocaleDateString()+' &middot; last login '+new Date(u.lastLogin).toLocaleDateString()+'</p>';
+      if (canAct){
+        html += '<p class="acct-meta">Character: <select class="acct-select" data-act="assign-character" data-id="'+u.discordId+'">'+characterSelectHTML(u.characterSlug)+'</select></p>';
+      } else if (u.characterName){
+        html += '<p class="acct-meta">Character: '+escapeHtml(u.characterName)+'</p>';
+      }
+      html += '</div>';
+      if (u.role !== 'god' && canAct){
+        html += '<div class="acct-actions">';
+        if (currentSession.isGod){
+          html += '<button data-act="'+(u.isModerator ? 'demote' : 'promote')+'" data-id="'+u.discordId+'">'+ICONS.shield+(u.isModerator ? 'Remove Mod' : 'Make Mod')+'</button>';
+        }
+        html +=
+          '<button data-act="revoke" data-id="'+u.discordId+'">'+ICONS.revoke+'Log Out</button>' +
           '<button data-act="'+(u.blocked ? 'unblock' : 'block')+'" data-id="'+u.discordId+'">'+(u.blocked ? ICONS.unblock+'Unblock' : ICONS.block+'Block')+'</button>' +
           '<button class="btn-danger" data-act="remove" data-id="'+u.discordId+'">'+ICONS.remove+'Remove</button></div>';
       }
       el.innerHTML = html;
       accountsList.appendChild(el);
+    });
+    accountsList.querySelectorAll('select[data-act="assign-character"]').forEach(sel => {
+      sel.addEventListener('change', async () => {
+        await fetch('/api/users/assign-character', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ discordId: sel.dataset.id, characterSlug: sel.value }) });
+        renderAccounts();
+      });
     });
     accountsList.querySelectorAll('button[data-act]').forEach(btn => {
       btn.addEventListener('click', async () => {
@@ -632,11 +684,30 @@
         if (act === 'remove'){
           if (!confirm('Remove this account? They can log back in later if they still hold the role.')) return;
           await fetch('/api/users/remove', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ discordId: id }) });
+        } else if (act === 'revoke'){
+          if (!confirm('Log this account out of its current session?')) return;
+          await fetch('/api/users/revoke-sessions', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ discordId: id }) });
+        } else if (act === 'promote' || act === 'demote'){
+          await fetch('/api/users/set-moderator', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ discordId: id, isModerator: act === 'promote' }) });
         } else {
           await fetch('/api/users/block', { method: 'POST', headers: {'content-type':'application/json'}, body: JSON.stringify({ discordId: id, blocked: act === 'block' }) });
         }
         renderAccounts();
       });
+    });
+  }
+
+  async function renderAudit(){
+    if (!currentSession.canManage) return;
+    const res = await fetch('/api/audit');
+    const entries = await res.json().catch(() => []);
+    if (!Array.isArray(entries)) return;
+    auditList.innerHTML = entries.length ? '' : '<div class="audit-row">No logins recorded yet.</div>';
+    entries.forEach(a => {
+      const el = document.createElement('div');
+      el.className = 'audit-row' + (a.result !== 'success' ? ' denied' : '');
+      el.textContent = new Date(a.time).toLocaleString() + ' — ' + a.username + ' (' + (a.role || 'unknown') + ') — ' + a.result;
+      auditList.appendChild(el);
     });
   }
 
@@ -647,9 +718,12 @@
     } catch (e) { /* stay logged out */ }
     renderTopNav();
     renderLogControls();
-    if (currentSession.isGod) tabAccounts.hidden = false;
+    if (currentSession.canManage) tabAccounts.hidden = false;
     loadLog();
-    if (currentSession.isGod) renderAccounts();
+    if (currentSession.canManage){
+      renderAccounts();
+      renderAudit();
+    }
   })();
 
   function blurbHTML(blurb){
@@ -690,7 +764,7 @@
   function openDossier(i){
     const c = characters[i];
     dossierOpenIndex = i;
-    const slug = c.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const slug = slugify(c.name);
     dossierBox.className = 'dossier-box dossier-theme-' + slug;
     dossierImg.src = c.dossierPortrait;
     dossierImg.alt = c.name;

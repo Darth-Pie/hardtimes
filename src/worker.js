@@ -1,15 +1,23 @@
 // "The Warden" — Discord login gate for the Facility Log.
-// Two tiers, no dashboard-configurable roles (unlike 919gaming's):
+// Four tiers:
 //   - God (hardcoded OWNER_DISCORD_ID): full control, can post entries that
 //     go live immediately, edit/delete any entry, approve/reject pending
-//     submissions, and manage (block/remove) logged-in accounts.
+//     submissions, manage (block/remove/revoke-sessions) any account, assign
+//     characters, and grant/revoke the Moderator flag.
+//   - Moderator (any account with isModerator:true, set by God -- not tied
+//     to a Discord role): same day-to-day powers as God over entries and
+//     accounts, except a moderator can't act on God's account or another
+//     moderator's account, and only God can grant/revoke the flag itself.
 //   - Contributor (anyone holding CONTRIBUTOR_ROLE_ID in GUILD_ID): can log
-//     in and submit new entries, which land as "pending" until God approves
-//     them. Contributors cannot edit or delete anything, including their own
-//     submissions, once posted.
-// Session cookie carries only identity (id/username) -- role/blocked status
-// is looked up fresh from HARDTIMES_USERS on every request, so a block takes
-// effect immediately rather than waiting for the session to expire.
+//     in and submit new entries, which land as "pending" until a God/
+//     Moderator approves them.
+//   - Member (logged in, in GUILD_ID, but holds neither of the above):
+//     can log in and appear in Accounts, but can't submit entries yet --
+//     groundwork for a future member hub.
+// Session cookie carries only identity + a session epoch -- role/blocked/
+// moderator status is looked up fresh from HARDTIMES_USERS on every
+// request, and a mismatched epoch (bumped via "revoke sessions") logs the
+// cookie out immediately, same as a block does.
 
 const SITE_URL = 'https://hardtimes.919gaming.com/';
 const COOKIE_NAME = 'warden_auth';
@@ -25,6 +33,18 @@ const GUILD_ID = '223208136780152832';
 const CONTRIBUTOR_ROLE_ID = '1516570040579657898';
 const LOG_KV_KEY = 'log';
 const USER_KEY_PREFIX = 'user:';
+const AUDIT_KEY = 'audit_log';
+const AUDIT_MAX = 200;
+
+// Mirror of the `characters` array in index.html (name only) -- keep this
+// list in sync when a character is added/renamed there. Used only to
+// validate character-assignment requests; slugify() below must match
+// index.html's slug logic exactly since the slug is the shared identifier.
+const CHARACTER_NAMES = ['Kael', 'Mistarion', 'Heishi Kyu', 'Verum-Gaea', 'ND-E', 'Velveteen'];
+function slugify(name) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+const CHARACTERS = CHARACTER_NAMES.map(name => ({ slug: slugify(name), name }));
 
 function b64urlEncode(buf) {
   let bin = '';
@@ -86,13 +106,6 @@ function json(data, status) {
   });
 }
 
-async function getSession(request, env) {
-  const authSecret = await env.AUTH_SECRET.get();
-  const session = await verifyToken(getCookie(request, COOKIE_NAME), authSecret);
-  if (!session || !session.id) return { loggedIn: false, discordId: null, username: null };
-  return { loggedIn: true, discordId: session.id, username: session.username };
-}
-
 async function getUserRecord(env, discordId) {
   const stored = await env.HARDTIMES_USERS.get(USER_KEY_PREFIX + discordId);
   return stored ? JSON.parse(stored) : null;
@@ -105,6 +118,10 @@ async function upsertUserRecord(env, { discordId, username, role }) {
     username,
     role,
     blocked: existing ? !!existing.blocked : false,
+    isModerator: existing ? !!existing.isModerator : false,
+    sessionEpoch: existing ? (existing.sessionEpoch || 0) : 0,
+    characterSlug: existing ? (existing.characterSlug || null) : null,
+    characterName: existing ? (existing.characterName || null) : null,
     firstLogin: existing ? existing.firstLogin : now,
     lastLogin: now
   };
@@ -122,19 +139,70 @@ async function listUsers(env) {
   return users;
 }
 
-// Live permission check (not baked into the session cookie) so a block
-// takes effect on the very next request rather than waiting for re-login.
+async function appendAudit(env, entry) {
+  const stored = await env.HARDTIMES_USERS.get(AUDIT_KEY);
+  let list;
+  try { list = stored ? JSON.parse(stored) : []; } catch (e) { list = []; }
+  list.unshift(entry);
+  if (list.length > AUDIT_MAX) list.length = AUDIT_MAX;
+  await env.HARDTIMES_USERS.put(AUDIT_KEY, JSON.stringify(list));
+}
+async function getAudit(env) {
+  const stored = await env.HARDTIMES_USERS.get(AUDIT_KEY);
+  try { return stored ? JSON.parse(stored) : []; } catch (e) { return []; }
+}
+
+// Session + live permission check, consolidated: verifies the cookie's
+// signature, then re-reads the KV record every request so a block or a
+// "revoke sessions" (session-epoch bump) takes effect on the very next
+// request rather than waiting for the cookie to expire or for re-login.
+async function getSession(request, env) {
+  const authSecret = await env.AUTH_SECRET.get();
+  const payload = await verifyToken(getCookie(request, COOKIE_NAME), authSecret);
+  if (!payload || !payload.id) return { loggedIn: false, discordId: null, username: null, record: null };
+  const record = await getUserRecord(env, payload.id);
+  if (!record || record.blocked) return { loggedIn: false, discordId: null, username: null, record: null };
+  if ((payload.epoch || 0) !== (record.sessionEpoch || 0)) {
+    return { loggedIn: false, discordId: null, username: null, record: null };
+  }
+  return { loggedIn: true, discordId: payload.id, username: payload.username, record };
+}
+
 async function getPermissions(request, env) {
   const session = await getSession(request, env);
   if (!session.loggedIn) {
-    return { loggedIn: false, discordId: null, username: null, isGod: false, isContributor: false };
+    return {
+      loggedIn: false, discordId: null, username: null, role: null,
+      isGod: false, isModerator: false, isContributor: false,
+      canManage: false, canSubmit: false, characterSlug: null, characterName: null
+    };
   }
-  if (session.discordId === OWNER_DISCORD_ID) {
-    return { loggedIn: true, discordId: session.discordId, username: session.username, isGod: true, isContributor: false };
-  }
-  const record = await getUserRecord(env, session.discordId);
-  const isContributor = !!record && record.role === 'contributor' && !record.blocked;
-  return { loggedIn: true, discordId: session.discordId, username: session.username, isGod: false, isContributor };
+  const record = session.record;
+  const isGod = record.role === 'god';
+  const isModerator = !isGod && !!record.isModerator;
+  const isContributor = record.role === 'contributor';
+  const canManage = isGod || isModerator;
+  return {
+    loggedIn: true,
+    discordId: session.discordId,
+    username: session.username,
+    role: record.role,
+    isGod, isModerator, isContributor,
+    canManage,
+    canSubmit: canManage || isContributor,
+    characterSlug: record.characterSlug || null,
+    characterName: record.characterName || null
+  };
+}
+
+// Whether `perms` (already resolved via getPermissions) may act on
+// `targetRecord`. God can act on anyone; a moderator can act on anyone
+// except God or another moderator, so moderators can't lock each other
+// (or God) out. Only God can grant/revoke the moderator flag itself.
+function canActOnTarget(perms, targetRecord) {
+  if (perms.isGod) return true;
+  if (!perms.isModerator) return false;
+  return targetRecord.role !== 'god' && !targetRecord.isModerator;
 }
 
 function normalizeEntry(e, i) {
@@ -210,20 +278,24 @@ async function handleRequest(request, env, ctx) {
   // ---- session/status ----
   if (url.pathname === '/api/session' && request.method === 'GET') {
     const perms = await getPermissions(request, env);
-    return json({ loggedIn: perms.loggedIn, username: perms.username, isGod: perms.isGod, isContributor: perms.isContributor });
+    return json({
+      loggedIn: perms.loggedIn, username: perms.username, role: perms.role,
+      isGod: perms.isGod, isModerator: perms.isModerator, isContributor: perms.isContributor,
+      canManage: perms.canManage, canSubmit: perms.canSubmit, characterName: perms.characterName
+    });
   }
 
   // ---- facility log ----
   if (url.pathname === '/api/log' && request.method === 'GET') {
     const perms = await getPermissions(request, env);
     const entries = await getLogEntries(env);
-    if (perms.isGod) return json(entries);
+    if (perms.canManage) return json(entries);
     return json(entries.filter(e => e.approved).map(e => ({ id: e.id, date: e.date, status: e.status, title: e.title, body: e.body })));
   }
 
   if (url.pathname === '/api/log' && request.method === 'POST') {
     const perms = await getPermissions(request, env);
-    if (!perms.isGod && !perms.isContributor) return json({ ok: false, error: 'Not authorized.' }, 403);
+    if (!perms.canSubmit) return json({ ok: false, error: 'Not authorized.' }, 403);
     const body = await readJson(request);
     if (!body) return json({ ok: false, error: 'Invalid request.' }, 400);
     const date = (body.date || '').toString().trim();
@@ -235,9 +307,9 @@ async function handleRequest(request, env, ctx) {
     entries.unshift({
       id: crypto.randomUUID(),
       date, status, title, body: entryBody,
-      approved: perms.isGod,
+      approved: perms.canManage,
       authorId: perms.discordId,
-      authorName: perms.username
+      authorName: perms.characterName || perms.username
     });
     await saveLogEntries(env, entries);
     return json({ ok: true });
@@ -245,7 +317,7 @@ async function handleRequest(request, env, ctx) {
 
   if (url.pathname === '/api/log/edit' && request.method === 'POST') {
     const perms = await getPermissions(request, env);
-    if (!perms.isGod) return json({ ok: false, error: 'Not authorized.' }, 403);
+    if (!perms.canManage) return json({ ok: false, error: 'Not authorized.' }, 403);
     const body = await readJson(request);
     if (!body || !body.id) return json({ ok: false, error: 'Invalid request.' }, 400);
     const entries = await getLogEntries(env);
@@ -261,7 +333,7 @@ async function handleRequest(request, env, ctx) {
 
   if (url.pathname === '/api/log/approve' && request.method === 'POST') {
     const perms = await getPermissions(request, env);
-    if (!perms.isGod) return json({ ok: false, error: 'Not authorized.' }, 403);
+    if (!perms.canManage) return json({ ok: false, error: 'Not authorized.' }, 403);
     const body = await readJson(request);
     if (!body || !body.id) return json({ ok: false, error: 'Invalid request.' }, 400);
     const entries = await getLogEntries(env);
@@ -274,7 +346,7 @@ async function handleRequest(request, env, ctx) {
 
   if (url.pathname === '/api/log/delete' && request.method === 'POST') {
     const perms = await getPermissions(request, env);
-    if (!perms.isGod) return json({ ok: false, error: 'Not authorized.' }, 403);
+    if (!perms.canManage) return json({ ok: false, error: 'Not authorized.' }, 403);
     const body = await readJson(request);
     if (!body || !body.id) return json({ ok: false, error: 'Invalid request.' }, 400);
     const entries = await getLogEntries(env);
@@ -283,21 +355,22 @@ async function handleRequest(request, env, ctx) {
     return json({ ok: true });
   }
 
-  // ---- accounts (God only) ----
+  // ---- accounts (God + Moderator) ----
   if (url.pathname === '/api/users' && request.method === 'GET') {
     const perms = await getPermissions(request, env);
-    if (!perms.isGod) return json({ ok: false, error: 'Not authorized.' }, 403);
+    if (!perms.canManage) return json({ ok: false, error: 'Not authorized.' }, 403);
     return json(await listUsers(env));
   }
 
   if (url.pathname === '/api/users/block' && request.method === 'POST') {
     const perms = await getPermissions(request, env);
-    if (!perms.isGod) return json({ ok: false, error: 'Not authorized.' }, 403);
+    if (!perms.canManage) return json({ ok: false, error: 'Not authorized.' }, 403);
     const body = await readJson(request);
     if (!body || !body.discordId) return json({ ok: false, error: 'Invalid request.' }, 400);
     if (body.discordId === OWNER_DISCORD_ID) return json({ ok: false, error: 'Cannot block the God account.' }, 400);
     const record = await getUserRecord(env, body.discordId);
     if (!record) return json({ ok: false, error: 'Account not found.' }, 404);
+    if (!canActOnTarget(perms, record)) return json({ ok: false, error: 'Not authorized.' }, 403);
     record.blocked = !!body.blocked;
     await env.HARDTIMES_USERS.put(USER_KEY_PREFIX + body.discordId, JSON.stringify(record));
     return json({ ok: true });
@@ -305,12 +378,70 @@ async function handleRequest(request, env, ctx) {
 
   if (url.pathname === '/api/users/remove' && request.method === 'POST') {
     const perms = await getPermissions(request, env);
-    if (!perms.isGod) return json({ ok: false, error: 'Not authorized.' }, 403);
+    if (!perms.canManage) return json({ ok: false, error: 'Not authorized.' }, 403);
     const body = await readJson(request);
     if (!body || !body.discordId) return json({ ok: false, error: 'Invalid request.' }, 400);
     if (body.discordId === OWNER_DISCORD_ID) return json({ ok: false, error: 'Cannot remove the God account.' }, 400);
+    const record = await getUserRecord(env, body.discordId);
+    if (!record) return json({ ok: false, error: 'Account not found.' }, 404);
+    if (!canActOnTarget(perms, record)) return json({ ok: false, error: 'Not authorized.' }, 403);
     await env.HARDTIMES_USERS.delete(USER_KEY_PREFIX + body.discordId);
     return json({ ok: true });
+  }
+
+  if (url.pathname === '/api/users/assign-character' && request.method === 'POST') {
+    const perms = await getPermissions(request, env);
+    if (!perms.canManage) return json({ ok: false, error: 'Not authorized.' }, 403);
+    const body = await readJson(request);
+    if (!body || !body.discordId) return json({ ok: false, error: 'Invalid request.' }, 400);
+    const record = await getUserRecord(env, body.discordId);
+    if (!record) return json({ ok: false, error: 'Account not found.' }, 404);
+    if (!canActOnTarget(perms, record)) return json({ ok: false, error: 'Not authorized.' }, 403);
+    const slug = (body.characterSlug || '').toString().trim();
+    if (!slug) {
+      record.characterSlug = null;
+      record.characterName = null;
+    } else {
+      const character = CHARACTERS.find(c => c.slug === slug);
+      if (!character) return json({ ok: false, error: 'Unknown character.' }, 400);
+      record.characterSlug = character.slug;
+      record.characterName = character.name;
+    }
+    await env.HARDTIMES_USERS.put(USER_KEY_PREFIX + body.discordId, JSON.stringify(record));
+    return json({ ok: true });
+  }
+
+  if (url.pathname === '/api/users/set-moderator' && request.method === 'POST') {
+    const perms = await getPermissions(request, env);
+    if (!perms.isGod) return json({ ok: false, error: 'Not authorized.' }, 403);
+    const body = await readJson(request);
+    if (!body || !body.discordId) return json({ ok: false, error: 'Invalid request.' }, 400);
+    if (body.discordId === OWNER_DISCORD_ID) return json({ ok: false, error: 'Cannot change the God account.' }, 400);
+    const record = await getUserRecord(env, body.discordId);
+    if (!record) return json({ ok: false, error: 'Account not found.' }, 404);
+    record.isModerator = !!body.isModerator;
+    await env.HARDTIMES_USERS.put(USER_KEY_PREFIX + body.discordId, JSON.stringify(record));
+    return json({ ok: true });
+  }
+
+  if (url.pathname === '/api/users/revoke-sessions' && request.method === 'POST') {
+    const perms = await getPermissions(request, env);
+    if (!perms.canManage) return json({ ok: false, error: 'Not authorized.' }, 403);
+    const body = await readJson(request);
+    if (!body || !body.discordId) return json({ ok: false, error: 'Invalid request.' }, 400);
+    const record = await getUserRecord(env, body.discordId);
+    if (!record) return json({ ok: false, error: 'Account not found.' }, 404);
+    if (!canActOnTarget(perms, record)) return json({ ok: false, error: 'Not authorized.' }, 403);
+    record.sessionEpoch = (record.sessionEpoch || 0) + 1;
+    await env.HARDTIMES_USERS.put(USER_KEY_PREFIX + body.discordId, JSON.stringify(record));
+    return json({ ok: true });
+  }
+
+  // ---- login audit trail (God + Moderator) ----
+  if (url.pathname === '/api/audit' && request.method === 'GET') {
+    const perms = await getPermissions(request, env);
+    if (!perms.canManage) return json({ ok: false, error: 'Not authorized.' }, 403);
+    return json(await getAudit(env));
   }
 
   // ---- Discord OAuth ----
@@ -370,12 +501,16 @@ async function handleRequest(request, env, ctx) {
 
     const existingRecord = await getUserRecord(env, user.id);
     if (existingRecord && existingRecord.blocked) {
+      await appendAudit(env, { time: Date.now(), discordId: user.id, username: user.username, role: existingRecord.role, result: 'blocked' });
       const headers = new Headers(htmlHeaders);
       headers.append('Set-Cookie', clearState);
       return new Response(errorPage('Access Denied', 'This account has been blocked from the Warden console.'), { status: 403, headers });
     }
 
-    if (!isGod) {
+    let record;
+    if (isGod) {
+      record = await upsertUserRecord(env, { discordId: user.id, username: user.username, role: 'god' });
+    } else {
       const memberRes = await fetch(`https://discord.com/api/v10/users/@me/guilds/${GUILD_ID}/member`, {
         headers: { Authorization: `Bearer ${access_token}` }
       });
@@ -386,19 +521,15 @@ async function handleRequest(request, env, ctx) {
       }
       const member = await memberRes.json();
       const roles = member.roles || [];
-      if (!roles.includes(CONTRIBUTOR_ROLE_ID)) {
-        const headers = new Headers(htmlHeaders);
-        headers.append('Set-Cookie', clearState);
-        return new Response(errorPage('Access Denied', "You don't have the role required to log in here."), { status: 403, headers });
-      }
-      await upsertUserRecord(env, { discordId: user.id, username: user.username, role: 'contributor' });
-    } else {
-      await upsertUserRecord(env, { discordId: user.id, username: user.username, role: 'god' });
+      const derivedRole = roles.includes(CONTRIBUTOR_ROLE_ID) ? 'contributor' : 'member';
+      record = await upsertUserRecord(env, { discordId: user.id, username: user.username, role: derivedRole });
     }
+
+    await appendAudit(env, { time: Date.now(), discordId: user.id, username: user.username, role: record.role, result: 'success' });
 
     const exp = Math.floor(Date.now() / 1000) + COOKIE_MAX_AGE;
     const authSecret = await env.AUTH_SECRET.get();
-    const token = await signToken({ id: user.id, username: user.username, exp }, authSecret);
+    const token = await signToken({ id: user.id, username: user.username, epoch: record.sessionEpoch || 0, exp }, authSecret);
     const headers = new Headers({ Location: SITE_URL, 'Cache-Control': 'no-store, private' });
     headers.append('Set-Cookie', `${COOKIE_NAME}=${token}; Path=/; Max-Age=${COOKIE_MAX_AGE}; HttpOnly; Secure; SameSite=Lax`);
     headers.append('Set-Cookie', clearState);
